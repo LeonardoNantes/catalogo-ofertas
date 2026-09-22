@@ -173,11 +173,10 @@ function renderizarItens() {
         <div class="item-card" style="background: ${info.bg};">
           <div class="item-icone">${iconeCategoria(item.categoria, info.fg)}</div>
           <div class="item-corpo">
-            <div class="item-categoria" style="color: ${info.fg};">${escapeHtml(item.categoria)}</div>
             <div class="item-descricao">${escapeHtml(item.descricao)}</div>
             <div class="item-codigos">
               <span>Cód. ${escapeHtml(item.codigo)}</span>
-              ${item.codigo_barras ? `<span class="divisor"></span><span>Cód. barras ${escapeHtml(item.codigo_barras)}</span>` : ""}
+              ${item.codigo_barras ? `<span class="divisor"></span><span>Barras ${escapeHtml(item.codigo_barras)}</span>` : ""}
             </div>
             <div class="item-acao-linha">
               <div class="item-preco">${formatarPreco(item.preco)}</div>
@@ -221,8 +220,29 @@ document.getElementById("btn-enviar-interesse").addEventListener("click", () => 
   const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
   if (itensMarcados.length === 0 || !VENDEDOR_WHATSAPP) return;
 
-  const linhas = itensMarcados.map((i) => `- ${i.descricao} (Cód. ${i.codigo}) — Qtd: ${QTY.get(i.codigo)}`);
-  const mensagem = `Olá! Vi a Ofertas da Semana e tenho interesse nestes itens:\n\n${linhas.join("\n")}`;
+  // Agrupa por categoria (não pela ordem que o cliente foi marcando) e
+  // ordena tanto as categorias quanto os itens dentro de cada uma em
+  // ordem alfabética.
+  const porCategoria = new Map();
+  itensMarcados.forEach((item) => {
+    if (!porCategoria.has(item.categoria)) porCategoria.set(item.categoria, []);
+    porCategoria.get(item.categoria).push(item);
+  });
+
+  const categoriasOrdenadas = Array.from(porCategoria.keys()).sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  const blocos = categoriasOrdenadas.map((categoria) => {
+    const itensDaCategoria = porCategoria.get(categoria).sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR"));
+    const linhas = itensDaCategoria.map((i) => `Cód: ${i.codigo} | Qtd: ${QTY.get(i.codigo)}`);
+    return `- *${categoria.toUpperCase()}*\n${linhas.join("\n")}`;
+  });
+
+  const mensagem =
+    `*OFERTAS DA SEMANA*\n` +
+    `_Olá! tenho interesse nestes itens:_\n\n` +
+    blocos.join("\n\n") +
+    `\n\n_(Vamos negociar esses itens!)_`;
+
   const url = `https://wa.me/${VENDEDOR_WHATSAPP}?text=${encodeURIComponent(mensagem)}`;
   window.open(url, "_blank");
 });
