@@ -102,7 +102,28 @@ async function buscarOfertaAtual(area) {
     .order("ordem", { ascending: true });
   if (erroItens) throw erroItens;
 
-  return { itens: itens || [], semanaInicio: semana_inicio, semanaFim: semana_fim };
+  const itensComFoto = await anexarFotosDosProdutos(itens || []);
+
+  return { itens: itensComFoto, semanaInicio: semana_inicio, semanaFim: semana_fim };
+}
+
+// Produtos que já tiverem foto cadastrada (banco de fotos, por código
+// Martins) mostram a foto de verdade no lugar do ícone da categoria.
+async function anexarFotosDosProdutos(itens) {
+  if (itens.length === 0) return itens;
+  try {
+    const codigos = itens.map((i) => i.codigo);
+    const { data, error } = await getClient()
+      .from("ofertas_fotos")
+      .select("codigo, foto_url")
+      .in("codigo", codigos);
+    if (error) throw error;
+    const fotoPorCodigo = new Map((data || []).map((f) => [f.codigo, f.foto_url]));
+    return itens.map((item) => ({ ...item, foto_url: fotoPorCodigo.get(item.codigo) || null }));
+  } catch (erro) {
+    console.error("[Ofertas da Semana] Não consegui buscar as fotos dos produtos:", erro);
+    return itens;
+  }
 }
 
 function formatarDataCurta(dataISO) {
@@ -171,7 +192,7 @@ function renderizarItens() {
       const interessado = qty > 0;
       return `
         <div class="item-card" style="background: ${info.bg};">
-          <div class="item-icone">${iconeCategoria(item.categoria, info.fg)}</div>
+          <div class="item-icone"${item.foto_url ? ` style="background-image:url('${escapeAttr(item.foto_url)}')"` : ""}>${item.foto_url ? "" : iconeCategoria(item.categoria, info.fg)}</div>
           <div class="item-corpo">
             <div class="item-descricao">${escapeHtml(item.descricao)}</div>
             <div class="item-codigos">
