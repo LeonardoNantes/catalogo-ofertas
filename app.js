@@ -280,9 +280,6 @@ async function iniciar() {
 
   VENDEDOR_WHATSAPP = vendedor.whatsapp;
   document.getElementById("nome-vendedor").textContent = vendedor.nome;
-  document.getElementById("btn-whatsapp-vendedor").href = vendedor.whatsapp
-    ? `https://wa.me/${vendedor.whatsapp}?text=${encodeURIComponent("Olá! Vi a Ofertas da Semana.")}`
-    : "#";
 
   const fotoEl = document.getElementById("foto-vendedor");
   if (vendedor.foto_url) {
