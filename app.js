@@ -316,7 +316,7 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
     const gutterV = 5;
     const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
     const alturaImagem = larguraCard - 4;
-    const alturaCard = alturaImagem + 36;
+    const alturaCard = alturaImagem + 27;
     let y = 18;
 
     doc.setFont("helvetica", "bold");
@@ -336,8 +336,6 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
     doc.line(margemX, y, larguraPagina - margemX, y);
     y += 8;
 
-    let total = 0;
-
     grupos.forEach((grupo) => {
       if (y + 8 + alturaCard > alturaPagina - margemX) { doc.addPage(); y = 18; }
       doc.setFont("helvetica", "bold");
@@ -354,9 +352,6 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
         }
 
         const x = margemX + coluna * (larguraCard + gutterH);
-        const qtd = QTY.get(item.codigo) || 0;
-        const subtotal = item.preco * qtd;
-        total += subtotal;
 
         // Moldura do cartão do produto
         doc.setDrawColor(225, 224, 218);
@@ -391,25 +386,18 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
         linhasNome.forEach((linha, i) => doc.text(linha, x + padCard, textY + i * 3.2));
         textY += linhasNome.length * 3.2 + 3;
 
-        // Código Martins
+        // Código Martins + código de barras, lado a lado numa linha só
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(6.5);
+        doc.setFontSize(5.6);
         doc.setTextColor(120, 120, 120);
-        doc.text(`Cód. ${item.codigo}`, x + padCard, textY);
-        textY += 3.6;
+        const textoCodigos = item.codigo_barras
+          ? `Cód. ${item.codigo}  •  Barras ${item.codigo_barras}`
+          : `Cód. ${item.codigo}`;
+        const linhaCodigos = doc.splitTextToSize(textoCodigos, larguraCard - padCard * 2)[0];
+        doc.text(linhaCodigos, x + padCard, textY);
+        textY += 4.5;
 
-        // Código de barras (quando existir)
-        if (item.codigo_barras) {
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(6.5);
-          doc.setTextColor(120, 120, 120);
-          doc.text(`Barras ${item.codigo_barras}`, x + padCard, textY);
-          textY += 4.5;
-        } else {
-          textY += 0.9;
-        }
-
-        // Preço em destaque (etiqueta verde) + quantidade/subtotal
+        // Preço em destaque (etiqueta verde) — única informação de valor no cartão
         const precoTexto = formatarPreco(item.preco);
         doc.setFont("helvetica", "bold");
         doc.setFontSize(9.5);
@@ -418,12 +406,6 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
         doc.roundedRect(x + padCard, textY - 3.3, larguraBadge, 5.4, 1.2, 1.2, "F");
         doc.setTextColor(255, 255, 255);
         doc.text(precoTexto, x + padCard + 2, textY + 0.3);
-        textY += 6.5;
-
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(7);
-        doc.setTextColor(90, 90, 90);
-        doc.text(`x ${qtd} = ${formatarPreco(subtotal)}`, x + padCard, textY);
 
         coluna++;
         if (coluna === colunas) {
@@ -435,15 +417,6 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
       if (coluna !== 0) y += alturaCard + gutterV;
       y += 3;
     });
-
-    if (y + 12 > alturaPagina - margemX) { doc.addPage(); y = 18; }
-    doc.setDrawColor(220, 220, 220);
-    doc.line(margemX, y, larguraPagina - margemX, y);
-    y += 8;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.setTextColor(20, 20, 20);
-    doc.text(`Total: ${formatarPreco(total)}`, margemX, y);
 
     const dataArquivo = new Date().toISOString().slice(0, 10);
     doc.save(`ofertas-da-semana-${dataArquivo}.pdf`);
