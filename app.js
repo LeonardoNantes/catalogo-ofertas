@@ -340,6 +340,7 @@ function carregarImageElement(dataUrl) {
 }
 
 const LIMITE_ITENS_PNG = 12;
+const CAMINHO_TEMPLATE_PNG = "template-oferta.jpg";
 
 document.getElementById("btn-gerar-png").addEventListener("click", async () => {
   const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
@@ -379,105 +380,115 @@ document.getElementById("btn-gerar-png").addEventListener("click", async () => {
       })
     );
 
+    const imagemTemplate = await carregarImageElement(CAMINHO_TEMPLATE_PNG);
+
     if (document.fonts && document.fonts.ready) {
       try { await document.fonts.ready; } catch (erroFontes) { /* segue com a fonte padrão */ }
     }
 
-    const colunas = 4;
-    const margemX = 24;
-    const gutterH = 16;
-    const gutterV = 20;
-    const larguraCanvas = 1200;
+    // Grade de 3 colunas x 4 linhas = 12 cartões, dentro do espaço vazio
+    // da imagem-modelo (entre o logo no topo e os enfeites do rodapé).
+    const larguraCanvas = 1080;
+    const alturaCanvas = 1920;
+    const colunas = 3;
+    const linhasGrade = 4;
+    const margemX = 70;
+    const gutterH = 20;
+    const gutterV = 16;
+    const areaTopoY = 300;
+    const areaRodapeY = 1700;
+
     const larguraUtil = larguraCanvas - margemX * 2;
     const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
+    const alturaCard = (areaRodapeY - areaTopoY - gutterV * (linhasGrade - 1)) / linhasGrade;
     const padCard = 10;
-    const alturaImagem = larguraCard - padCard * 2;
-    const alturaCard = alturaImagem + 140;
-    const linhas = Math.ceil(itensOrdenados.length / colunas);
-    const alturaCabecalho = 108;
-    const alturaCanvas = alturaCabecalho + linhas * alturaCard + (linhas - 1) * gutterV + 32;
+    const larguraFoto = larguraCard - padCard * 2;
+    const alturaImagem = alturaCard - 150;
 
     const canvas = document.createElement("canvas");
     canvas.width = larguraCanvas;
     canvas.height = alturaCanvas;
     const ctx = canvas.getContext("2d");
 
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, larguraCanvas, alturaCanvas);
+    // Fundo: a imagem-modelo (ou um fundo escuro liso, se ela não carregar)
+    if (imagemTemplate) {
+      ctx.drawImage(imagemTemplate, 0, 0, larguraCanvas, alturaCanvas);
+    } else {
+      ctx.fillStyle = "#171613";
+      ctx.fillRect(0, 0, larguraCanvas, alturaCanvas);
+    }
 
-    // Cabeçalho
-    ctx.fillStyle = "#141414";
-    ctx.font = "700 30px 'Space Grotesk', sans-serif";
-    ctx.fillText("Ofertas da Semana", margemX, 44);
-
-    ctx.fillStyle = "#5A5A5A";
-    ctx.font = "400 18px 'Work Sans', sans-serif";
-    const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
-    const textoSemana = (document.getElementById("texto-semana").textContent || "").trim();
-    ctx.fillText([nomeVendedor, textoSemana].filter(Boolean).join(" · "), margemX, 72);
-
-    ctx.strokeStyle = "#DCDCDC";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(margemX, 88);
-    ctx.lineTo(larguraCanvas - margemX, 88);
-    ctx.stroke();
-
-    // Grade de cartões
-    let y = alturaCabecalho;
+    // Grade de cartões dos produtos, em cartões brancos por cima do fundo
     itensOrdenados.forEach((item, indice) => {
       const coluna = indice % colunas;
-      if (coluna === 0 && indice > 0) y += alturaCard + gutterV;
+      const linha = Math.floor(indice / colunas);
       const x = margemX + coluna * (larguraCard + gutterH);
+      const y = areaTopoY + linha * (alturaCard + gutterV);
 
-      // Moldura do cartão
-      ctx.strokeStyle = "#E1E0DA";
-      ctx.lineWidth = 1;
-      desenharRetanguloArredondado(ctx, x, y, larguraCard, alturaCard, 10);
-      ctx.stroke();
+      // Cartão branco com sombra suave, pra destacar sobre o fundo escuro
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.35)";
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 6;
+      ctx.fillStyle = "#FFFFFF";
+      desenharRetanguloArredondado(ctx, x, y, larguraCard, alturaCard, 14);
+      ctx.fill();
+      ctx.restore();
 
       // Foto (ou um fundo neutro, quando não tiver foto salva)
       const img = imagensCarregadas.get(item.codigo);
       if (img) {
         ctx.save();
-        desenharRetanguloArredondado(ctx, x + padCard, y + padCard, alturaImagem, alturaImagem, 6);
+        desenharRetanguloArredondado(ctx, x + padCard, y + padCard, larguraFoto, alturaImagem, 8);
         ctx.clip();
-        ctx.drawImage(img, x + padCard, y + padCard, alturaImagem, alturaImagem);
+        ctx.drawImage(img, x + padCard, y + padCard, larguraFoto, alturaImagem);
         ctx.restore();
       } else {
         ctx.fillStyle = "#F4F3EE";
-        desenharRetanguloArredondado(ctx, x + padCard, y + padCard, alturaImagem, alturaImagem, 6);
+        desenharRetanguloArredondado(ctx, x + padCard, y + padCard, larguraFoto, alturaImagem, 8);
         ctx.fill();
       }
 
-      let textY = y + padCard + alturaImagem + 26;
+      let textY = y + padCard + alturaImagem + 24;
 
       // Nome do produto (até 2 linhas)
       ctx.fillStyle = "#1E1E1E";
-      ctx.font = "700 18px 'Work Sans', sans-serif";
-      const linhasNome = quebrarTextoCanvas(ctx, item.descricao, larguraCard - padCard * 2, 2);
-      linhasNome.forEach((linha, i) => ctx.fillText(linha, x + padCard, textY + i * 22));
-      textY += linhasNome.length * 22 + 8;
+      ctx.font = "700 17px 'Work Sans', sans-serif";
+      const linhasNome = quebrarTextoCanvas(ctx, item.descricao, larguraFoto, 2);
+      linhasNome.forEach((linha, i) => ctx.fillText(linha, x + padCard, textY + i * 20));
+      textY += linhasNome.length * 20 + 6;
 
       // Código Martins + código de barras, numa linha só
       ctx.fillStyle = "#787878";
-      ctx.font = "400 13px 'Work Sans', sans-serif";
+      ctx.font = "400 12px 'Work Sans', sans-serif";
       const textoCodigos = item.codigo_barras
         ? `Cód. ${item.codigo}  •  Barras ${item.codigo_barras}`
         : `Cód. ${item.codigo}`;
-      ctx.fillText(quebrarTextoCanvas(ctx, textoCodigos, larguraCard - padCard * 2, 1)[0], x + padCard, textY);
-      textY += 30;
+      ctx.fillText(quebrarTextoCanvas(ctx, textoCodigos, larguraFoto, 1)[0], x + padCard, textY);
+      textY += 28;
 
       // Preço em destaque (etiqueta verde) — única informação de valor no cartão
       const precoTexto = formatarPreco(item.preco);
-      ctx.font = "700 22px 'Work Sans', sans-serif";
-      const larguraBadge = ctx.measureText(precoTexto).width + 22;
+      ctx.font = "700 20px 'Work Sans', sans-serif";
+      const larguraBadge = ctx.measureText(precoTexto).width + 20;
       ctx.fillStyle = "#0E6B54";
-      desenharRetanguloArredondado(ctx, x + padCard, textY - 22, larguraBadge, 30, 8);
+      desenharRetanguloArredondado(ctx, x + padCard, textY - 20, larguraBadge, 28, 8);
       ctx.fill();
       ctx.fillStyle = "#FFFFFF";
-      ctx.fillText(precoTexto, x + padCard + 11, textY - 4);
+      ctx.fillText(precoTexto, x + padCard + 10, textY - 3);
     });
+
+    // Rodapé: nome do vendedor + período da semana, centralizado
+    const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
+    const textoSemana = (document.getElementById("texto-semana").textContent || "").trim();
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "700 30px 'Space Grotesk', sans-serif";
+    ctx.fillText(nomeVendedor, larguraCanvas / 2, 1800);
+    ctx.fillStyle = "#F4C430";
+    ctx.font = "400 20px 'Work Sans', sans-serif";
+    ctx.fillText(textoSemana, larguraCanvas / 2, 1836);
+    ctx.textAlign = "left";
 
     const dataArquivo = new Date().toISOString().slice(0, 10);
     const link = document.createElement("a");
