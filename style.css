@@ -221,7 +221,6 @@ button { font-family: inherit; cursor: pointer; }
   border-top: 0.5px solid rgba(31,30,29,0.12);
   box-shadow: 0 -6px 20px rgba(32,31,28,0.06);
 }
-.rodape-botoes { display: flex; flex-direction: column; gap: 8px; }
 .rodape .botao-principal {
   width: 100%; padding: 15px; border-radius: 14px; font-size: 15px; border: none;
   background: linear-gradient(135deg, #0E6B54, #0B5744);
@@ -231,14 +230,20 @@ button { font-family: inherit; cursor: pointer; }
 .rodape .botao-principal:active { transform: scale(0.98); }
 .rodape .botao-principal:disabled { background: #F0EEE6; color: #6B6A62; cursor: default; box-shadow: none; }
 
-.botao-secundario {
-  width: 100%; padding: 12px; border-radius: 14px; font-size: 14px; font-weight: 700;
-  border: 1.5px solid #0E6B54; background: #FFFFFF; color: #0E6B54;
+.botao-pdf {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: #E3EFEA;
+  border: none;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
   cursor: pointer;
+  box-shadow: 0 1px 4px rgba(14,107,84,0.18);
   transition: box-shadow 0.15s, transform 0.1s;
 }
-.botao-secundario:active { transform: scale(0.98); }
-.botao-secundario:disabled { border-color: #D8D6CC; color: #9a9890; cursor: default; }
+.botao-pdf:active { transform: scale(0.95); }
+.botao-pdf:disabled { background: #F0EEE6; cursor: default; box-shadow: none; }
+.botao-pdf:disabled svg { stroke: #B7B5AC; }
 .rodape-aviso { text-align: center; font-size: 11px; color: #5E5D59; margin-top: 8px; }
 
 @media (max-width: 380px) {

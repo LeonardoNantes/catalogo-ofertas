@@ -256,10 +256,6 @@ function agruparPorCategoriaOrdenado(itens) {
   }));
 }
 
-function truncarTexto(texto, max) {
-  return texto.length > max ? texto.slice(0, max - 1) + "…" : texto;
-}
-
 // Carrega a foto do produto (URL do Supabase) como base64, porque o jsPDF
 // só consegue inserir imagem já em base64 — não aceita link direto.
 async function carregarImagemComoDataUrl(url) {
@@ -311,11 +307,16 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: "mm", format: "a4" });
-    const margemX = 15;
+    const margemX = 12;
     const larguraPagina = 210;
+    const alturaPagina = 297;
     const larguraUtil = larguraPagina - margemX * 2;
-    const alturaImagem = 20;
-    const alturaLinhaMinima = 12;
+    const colunas = 3;
+    const gutterH = 5;
+    const gutterV = 5;
+    const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
+    const alturaImagem = larguraCard - 4;
+    const alturaCard = alturaImagem + 26;
     let y = 18;
 
     doc.setFont("helvetica", "bold");
@@ -338,55 +339,92 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
     let total = 0;
 
     grupos.forEach((grupo) => {
-      if (y > 270) { doc.addPage(); y = 18; }
+      if (y + 8 + alturaCard > alturaPagina - margemX) { doc.addPage(); y = 18; }
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
       doc.setTextColor(14, 107, 84);
       doc.text(grupo.categoria.toUpperCase(), margemX, y);
       y += 6;
 
+      let coluna = 0;
       grupo.itens.forEach((item) => {
+        if (coluna === 0 && y + alturaCard > alturaPagina - margemX) {
+          doc.addPage();
+          y = 18;
+        }
+
+        const x = margemX + coluna * (larguraCard + gutterH);
         const qtd = QTY.get(item.codigo) || 0;
         const subtotal = item.preco * qtd;
         total += subtotal;
 
+        // Moldura do cartão do produto
+        doc.setDrawColor(225, 224, 218);
+        doc.setLineWidth(0.2);
+        doc.roundedRect(x, y, larguraCard, alturaCard, 1.5, 1.5, "S");
+
+        // Foto (ou um fundo neutro no lugar, quando não tiver foto salva)
         const dataUrlImagem = imagensPorCodigo.get(item.codigo);
-        const temImagem = Boolean(dataUrlImagem);
-        const alturaBloco = temImagem ? alturaImagem + 2 : alturaLinhaMinima;
-
-        if (y + alturaBloco > 280) { doc.addPage(); y = 18; }
-
-        const xTexto = temImagem ? margemX + alturaImagem + 4 : margemX;
-
-        if (temImagem) {
+        const padCard = 2;
+        if (dataUrlImagem) {
           try {
-            doc.addImage(dataUrlImagem, formatoDaImagem(dataUrlImagem), margemX, y, alturaImagem, alturaImagem);
+            doc.addImage(dataUrlImagem, formatoDaImagem(dataUrlImagem), x + padCard, y + padCard, larguraCard - padCard * 2, alturaImagem);
           } catch (erro) {
             console.error("[Ofertas da Semana] Erro ao inserir imagem no PDF:", erro);
           }
+        } else {
+          doc.setFillColor(244, 243, 238);
+          doc.rect(x + padCard, y + padCard, larguraCard - padCard * 2, alturaImagem, "F");
         }
 
+        let textY = y + padCard + alturaImagem + 4.5;
+
+        // Nome do produto (até 2 linhas)
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(10.5);
+        doc.setFontSize(7.8);
         doc.setTextColor(30, 30, 30);
-        doc.text(truncarTexto(item.descricao, 62), xTexto, y + 4);
+        const todasLinhas = doc.splitTextToSize(item.descricao, larguraCard - padCard * 2);
+        const linhasNome = todasLinhas.slice(0, 2);
+        if (todasLinhas.length > 2 && linhasNome[1].length > 1) {
+          linhasNome[1] = linhasNome[1].slice(0, -1) + "…";
+        }
+        linhasNome.forEach((linha, i) => doc.text(linha, x + padCard, textY + i * 3.2));
+        textY += linhasNome.length * 3.2 + 3;
+
+        // Código
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.5);
+        doc.setTextColor(120, 120, 120);
+        doc.text(`Cód. ${item.codigo}`, x + padCard, textY);
+        textY += 4.5;
+
+        // Preço (etiqueta escura) + quantidade/subtotal
+        const precoTexto = formatarPreco(item.preco);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8.5);
+        const larguraBadge = doc.getTextWidth(precoTexto) + 3.5;
+        doc.setFillColor(30, 30, 30);
+        doc.roundedRect(x + padCard, textY - 3, larguraBadge, 4.6, 1, 1, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.text(precoTexto, x + padCard + 1.7, textY);
 
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.setTextColor(110, 110, 110);
-        doc.text(`Cód. ${item.codigo}`, xTexto, y + 9);
+        doc.setFontSize(7);
+        doc.setTextColor(90, 90, 90);
+        doc.text(`x ${qtd} = ${formatarPreco(subtotal)}`, x + padCard + larguraBadge + 2, textY);
 
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9.5);
-        doc.setTextColor(30, 30, 30);
-        doc.text(`${formatarPreco(item.preco)}  x  ${qtd}  =  ${formatarPreco(subtotal)}`, xTexto, y + 14);
-
-        y += alturaBloco + 4;
+        coluna++;
+        if (coluna === colunas) {
+          coluna = 0;
+          y += alturaCard + gutterV;
+        }
       });
-      y += 2;
+
+      if (coluna !== 0) y += alturaCard + gutterV;
+      y += 3;
     });
 
-    if (y > 265) { doc.addPage(); y = 18; }
+    if (y + 12 > alturaPagina - margemX) { doc.addPage(); y = 18; }
     doc.setDrawColor(220, 220, 220);
     doc.line(margemX, y, larguraPagina - margemX, y);
     y += 8;
