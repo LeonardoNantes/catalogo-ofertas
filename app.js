@@ -311,12 +311,12 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
     const larguraPagina = 210;
     const alturaPagina = 297;
     const larguraUtil = larguraPagina - margemX * 2;
-    const colunas = 3;
-    const gutterH = 5;
+    const colunas = 4;
+    const gutterH = 4;
     const gutterV = 5;
     const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
     const alturaImagem = larguraCard - 4;
-    const alturaCard = alturaImagem + 26;
+    const alturaCard = alturaImagem + 36;
     let y = 18;
 
     doc.setFont("helvetica", "bold");
@@ -391,27 +391,39 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
         linhasNome.forEach((linha, i) => doc.text(linha, x + padCard, textY + i * 3.2));
         textY += linhasNome.length * 3.2 + 3;
 
-        // Código
+        // Código Martins
         doc.setFont("helvetica", "normal");
         doc.setFontSize(6.5);
         doc.setTextColor(120, 120, 120);
         doc.text(`Cód. ${item.codigo}`, x + padCard, textY);
-        textY += 4.5;
+        textY += 3.6;
 
-        // Preço (etiqueta escura) + quantidade/subtotal
+        // Código de barras (quando existir)
+        if (item.codigo_barras) {
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(6.5);
+          doc.setTextColor(120, 120, 120);
+          doc.text(`Barras ${item.codigo_barras}`, x + padCard, textY);
+          textY += 4.5;
+        } else {
+          textY += 0.9;
+        }
+
+        // Preço em destaque (etiqueta verde) + quantidade/subtotal
         const precoTexto = formatarPreco(item.preco);
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(8.5);
-        const larguraBadge = doc.getTextWidth(precoTexto) + 3.5;
-        doc.setFillColor(30, 30, 30);
-        doc.roundedRect(x + padCard, textY - 3, larguraBadge, 4.6, 1, 1, "F");
+        doc.setFontSize(9.5);
+        const larguraBadge = doc.getTextWidth(precoTexto) + 4;
+        doc.setFillColor(14, 107, 84);
+        doc.roundedRect(x + padCard, textY - 3.3, larguraBadge, 5.4, 1.2, 1.2, "F");
         doc.setTextColor(255, 255, 255);
-        doc.text(precoTexto, x + padCard + 1.7, textY);
+        doc.text(precoTexto, x + padCard + 2, textY + 0.3);
+        textY += 6.5;
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7);
         doc.setTextColor(90, 90, 90);
-        doc.text(`x ${qtd} = ${formatarPreco(subtotal)}`, x + padCard + larguraBadge + 2, textY);
+        doc.text(`x ${qtd} = ${formatarPreco(subtotal)}`, x + padCard, textY);
 
         coluna++;
         if (coluna === colunas) {
