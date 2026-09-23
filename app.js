@@ -228,15 +228,18 @@ function renderizarItens() {
 function atualizarRodape() {
   const btn = document.getElementById("btn-enviar-interesse");
   const btnPdf = document.getElementById("btn-gerar-pdf");
+  const btnPng = document.getElementById("btn-gerar-png");
   const totalItens = Array.from(QTY.values()).filter((q) => q > 0).length;
   if (totalItens > 0) {
     btn.textContent = `Enviar interesse (${totalItens} ${totalItens === 1 ? "item" : "itens"})`;
     btn.disabled = false;
     btnPdf.disabled = false;
+    btnPng.disabled = false;
   } else {
     btn.textContent = "Marque os itens de interesse";
     btn.disabled = true;
     btnPdf.disabled = true;
+    btnPng.disabled = true;
   }
 }
 
@@ -280,6 +283,214 @@ function formatoDaImagem(dataUrl) {
   if (dataUrl.startsWith("data:image/webp")) return "WEBP";
   return "JPEG";
 }
+
+// Caminho de retângulo arredondado no canvas (mesmo visual dos cartões do PDF).
+function desenharRetanguloArredondado(ctx, x, y, largura, altura, raio) {
+  ctx.beginPath();
+  ctx.moveTo(x + raio, y);
+  ctx.lineTo(x + largura - raio, y);
+  ctx.arcTo(x + largura, y, x + largura, y + raio, raio);
+  ctx.lineTo(x + largura, y + altura - raio);
+  ctx.arcTo(x + largura, y + altura, x + largura - raio, y + altura, raio);
+  ctx.lineTo(x + raio, y + altura);
+  ctx.arcTo(x, y + altura, x, y + altura - raio, raio);
+  ctx.lineTo(x, y + raio);
+  ctx.arcTo(x, y, x + raio, y, raio);
+  ctx.closePath();
+}
+
+// Quebra um texto em até "maxLinhas" linhas que cabem em "larguraMax" (usa a
+// fonte já configurada no ctx), cortando com "…" se sobrar texto.
+function quebrarTextoCanvas(ctx, texto, larguraMax, maxLinhas) {
+  const palavras = String(texto || "").split(/\s+/).filter(Boolean);
+  const linhas = [];
+  let linhaAtual = "";
+  palavras.forEach((palavra) => {
+    const tentativa = linhaAtual ? `${linhaAtual} ${palavra}` : palavra;
+    if (ctx.measureText(tentativa).width > larguraMax && linhaAtual) {
+      linhas.push(linhaAtual);
+      linhaAtual = palavra;
+    } else {
+      linhaAtual = tentativa;
+    }
+  });
+  if (linhaAtual) linhas.push(linhaAtual);
+  if (linhas.length === 0) return [""];
+
+  if (linhas.length > maxLinhas) {
+    const cortadas = linhas.slice(0, maxLinhas);
+    let ultima = cortadas[maxLinhas - 1];
+    while (ctx.measureText(ultima + "…").width > larguraMax && ultima.length > 1) {
+      ultima = ultima.slice(0, -1);
+    }
+    cortadas[maxLinhas - 1] = ultima + "…";
+    return cortadas;
+  }
+  return linhas;
+}
+
+// Carrega uma data URL como um objeto Image pronto pra desenhar no canvas.
+function carregarImageElement(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+const LIMITE_ITENS_PNG = 12;
+
+document.getElementById("btn-gerar-png").addEventListener("click", async () => {
+  const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
+  if (itensMarcados.length === 0) return;
+
+  if (itensMarcados.length > LIMITE_ITENS_PNG) {
+    alert(
+      `Pra gerar a imagem, marque no máximo ${LIMITE_ITENS_PNG} itens por vez.\n\n` +
+      `Gera a imagem com esses, desmarca eles e marca os próximos.`
+    );
+    return;
+  }
+
+  const botao = document.getElementById("btn-gerar-png");
+  botao.disabled = true;
+
+  try {
+    // Mesma ordenação usada no PDF (categoria e depois descrição, alfabética),
+    // só que aqui numa grade só, sem títulos de categoria.
+    const itensOrdenados = agruparPorCategoriaOrdenado(itensMarcados).flatMap((g) => g.itens);
+
+    const dataUrlsPorCodigo = new Map();
+    await Promise.all(
+      itensOrdenados
+        .filter((i) => i.foto_url)
+        .map(async (i) => {
+          const dataUrl = await carregarImagemComoDataUrl(i.foto_url);
+          if (dataUrl) dataUrlsPorCodigo.set(i.codigo, dataUrl);
+        })
+    );
+
+    const imagensCarregadas = new Map();
+    await Promise.all(
+      Array.from(dataUrlsPorCodigo.entries()).map(async ([codigo, dataUrl]) => {
+        const img = await carregarImageElement(dataUrl);
+        if (img) imagensCarregadas.set(codigo, img);
+      })
+    );
+
+    if (document.fonts && document.fonts.ready) {
+      try { await document.fonts.ready; } catch (erroFontes) { /* segue com a fonte padrão */ }
+    }
+
+    const colunas = 4;
+    const margemX = 24;
+    const gutterH = 16;
+    const gutterV = 20;
+    const larguraCanvas = 1200;
+    const larguraUtil = larguraCanvas - margemX * 2;
+    const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
+    const padCard = 10;
+    const alturaImagem = larguraCard - padCard * 2;
+    const alturaCard = alturaImagem + 140;
+    const linhas = Math.ceil(itensOrdenados.length / colunas);
+    const alturaCabecalho = 108;
+    const alturaCanvas = alturaCabecalho + linhas * alturaCard + (linhas - 1) * gutterV + 32;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = larguraCanvas;
+    canvas.height = alturaCanvas;
+    const ctx = canvas.getContext("2d");
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, larguraCanvas, alturaCanvas);
+
+    // Cabeçalho
+    ctx.fillStyle = "#141414";
+    ctx.font = "700 30px 'Space Grotesk', sans-serif";
+    ctx.fillText("Ofertas da Semana", margemX, 44);
+
+    ctx.fillStyle = "#5A5A5A";
+    ctx.font = "400 18px 'Work Sans', sans-serif";
+    const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
+    const textoSemana = (document.getElementById("texto-semana").textContent || "").trim();
+    ctx.fillText([nomeVendedor, textoSemana].filter(Boolean).join(" · "), margemX, 72);
+
+    ctx.strokeStyle = "#DCDCDC";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(margemX, 88);
+    ctx.lineTo(larguraCanvas - margemX, 88);
+    ctx.stroke();
+
+    // Grade de cartões
+    let y = alturaCabecalho;
+    itensOrdenados.forEach((item, indice) => {
+      const coluna = indice % colunas;
+      if (coluna === 0 && indice > 0) y += alturaCard + gutterV;
+      const x = margemX + coluna * (larguraCard + gutterH);
+
+      // Moldura do cartão
+      ctx.strokeStyle = "#E1E0DA";
+      ctx.lineWidth = 1;
+      desenharRetanguloArredondado(ctx, x, y, larguraCard, alturaCard, 10);
+      ctx.stroke();
+
+      // Foto (ou um fundo neutro, quando não tiver foto salva)
+      const img = imagensCarregadas.get(item.codigo);
+      if (img) {
+        ctx.save();
+        desenharRetanguloArredondado(ctx, x + padCard, y + padCard, alturaImagem, alturaImagem, 6);
+        ctx.clip();
+        ctx.drawImage(img, x + padCard, y + padCard, alturaImagem, alturaImagem);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = "#F4F3EE";
+        desenharRetanguloArredondado(ctx, x + padCard, y + padCard, alturaImagem, alturaImagem, 6);
+        ctx.fill();
+      }
+
+      let textY = y + padCard + alturaImagem + 26;
+
+      // Nome do produto (até 2 linhas)
+      ctx.fillStyle = "#1E1E1E";
+      ctx.font = "700 18px 'Work Sans', sans-serif";
+      const linhasNome = quebrarTextoCanvas(ctx, item.descricao, larguraCard - padCard * 2, 2);
+      linhasNome.forEach((linha, i) => ctx.fillText(linha, x + padCard, textY + i * 22));
+      textY += linhasNome.length * 22 + 8;
+
+      // Código Martins + código de barras, numa linha só
+      ctx.fillStyle = "#787878";
+      ctx.font = "400 13px 'Work Sans', sans-serif";
+      const textoCodigos = item.codigo_barras
+        ? `Cód. ${item.codigo}  •  Barras ${item.codigo_barras}`
+        : `Cód. ${item.codigo}`;
+      ctx.fillText(quebrarTextoCanvas(ctx, textoCodigos, larguraCard - padCard * 2, 1)[0], x + padCard, textY);
+      textY += 30;
+
+      // Preço em destaque (etiqueta verde) — única informação de valor no cartão
+      const precoTexto = formatarPreco(item.preco);
+      ctx.font = "700 22px 'Work Sans', sans-serif";
+      const larguraBadge = ctx.measureText(precoTexto).width + 22;
+      ctx.fillStyle = "#0E6B54";
+      desenharRetanguloArredondado(ctx, x + padCard, textY - 22, larguraBadge, 30, 8);
+      ctx.fill();
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillText(precoTexto, x + padCard + 11, textY - 4);
+    });
+
+    const dataArquivo = new Date().toISOString().slice(0, 10);
+    const link = document.createElement("a");
+    link.download = `ofertas-da-semana-${dataArquivo}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  } catch (erro) {
+    console.error("[Ofertas da Semana] Erro ao gerar imagem:", erro);
+    alert("Não consegui gerar a imagem. Tenta de novo.");
+  } finally {
+    botao.disabled = false;
+  }
+});
 
 document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
   const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);

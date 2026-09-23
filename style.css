@@ -79,8 +79,8 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: 0 2px 6px rgba(14,107,84,0.3), 0 0 0 3px #FFFFFF, 0 0 0 4px rgba(14,107,84,0.14);
 }
 .dados-vendedor { display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0; }
-.nome-vendedor { font-weight: 600; font-size: 14.5px; }
-.frase-vendedor { font-size: 11px; font-style: italic; color: #5E5D59; }
+.nome-vendedor { font-weight: 600; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frase-vendedor { font-size: 11px; font-style: italic; color: #5E5D59; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- BANNER SEMANA ---------- */
 .banner-semana {
