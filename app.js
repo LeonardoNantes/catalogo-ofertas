@@ -227,15 +227,184 @@ function renderizarItens() {
 
 function atualizarRodape() {
   const btn = document.getElementById("btn-enviar-interesse");
+  const btnPdf = document.getElementById("btn-gerar-pdf");
   const totalItens = Array.from(QTY.values()).filter((q) => q > 0).length;
   if (totalItens > 0) {
     btn.textContent = `Enviar interesse (${totalItens} ${totalItens === 1 ? "item" : "itens"})`;
     btn.disabled = false;
+    btnPdf.disabled = false;
   } else {
     btn.textContent = "Marque os itens de interesse";
     btn.disabled = true;
+    btnPdf.disabled = true;
   }
 }
+
+// Agrupa por categoria (ordem alfabética) e ordena os itens de cada
+// categoria também em ordem alfabética — mesma lógica usada na mensagem
+// do WhatsApp, reaproveitada aqui pro PDF.
+function agruparPorCategoriaOrdenado(itens) {
+  const porCategoria = new Map();
+  itens.forEach((item) => {
+    if (!porCategoria.has(item.categoria)) porCategoria.set(item.categoria, []);
+    porCategoria.get(item.categoria).push(item);
+  });
+  const categoriasOrdenadas = Array.from(porCategoria.keys()).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  return categoriasOrdenadas.map((categoria) => ({
+    categoria,
+    itens: porCategoria.get(categoria).sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR")),
+  }));
+}
+
+function truncarTexto(texto, max) {
+  return texto.length > max ? texto.slice(0, max - 1) + "…" : texto;
+}
+
+// Carrega a foto do produto (URL do Supabase) como base64, porque o jsPDF
+// só consegue inserir imagem já em base64 — não aceita link direto.
+async function carregarImagemComoDataUrl(url) {
+  try {
+    const resposta = await fetch(url);
+    if (!resposta.ok) return null;
+    const blob = await resposta.blob();
+    return await new Promise((resolve, reject) => {
+      const leitor = new FileReader();
+      leitor.onload = () => resolve(leitor.result);
+      leitor.onerror = () => reject(new Error("Falha ao ler imagem"));
+      leitor.readAsDataURL(blob);
+    });
+  } catch (erro) {
+    console.error("[Ofertas da Semana] Não consegui carregar imagem pro PDF:", erro);
+    return null;
+  }
+}
+
+function formatoDaImagem(dataUrl) {
+  if (dataUrl.startsWith("data:image/png")) return "PNG";
+  if (dataUrl.startsWith("data:image/webp")) return "WEBP";
+  return "JPEG";
+}
+
+document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
+  const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
+  if (itensMarcados.length === 0) return;
+
+  const botao = document.getElementById("btn-gerar-pdf");
+  const textoOriginal = botao.textContent;
+  botao.disabled = true;
+  botao.textContent = "Gerando…";
+
+  try {
+    const grupos = agruparPorCategoriaOrdenado(itensMarcados);
+
+    // Carrega as fotos dos itens que tiverem, em paralelo, antes de montar
+    // o PDF (os itens sem foto salva simplesmente não mostram imagem).
+    const imagensPorCodigo = new Map();
+    await Promise.all(
+      itensMarcados
+        .filter((i) => i.foto_url)
+        .map(async (i) => {
+          const dataUrl = await carregarImagemComoDataUrl(i.foto_url);
+          if (dataUrl) imagensPorCodigo.set(i.codigo, dataUrl);
+        })
+    );
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const margemX = 15;
+    const larguraPagina = 210;
+    const larguraUtil = larguraPagina - margemX * 2;
+    const alturaImagem = 20;
+    const alturaLinhaMinima = 12;
+    let y = 18;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(20, 20, 20);
+    doc.text("Ofertas da Semana", margemX, y);
+    y += 7;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(90, 90, 90);
+    const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
+    const textoSemana = (document.getElementById("texto-semana").textContent || "").trim();
+    doc.text([nomeVendedor, textoSemana].filter(Boolean).join(" · "), margemX, y);
+    y += 9;
+    doc.setDrawColor(220, 220, 220);
+    doc.line(margemX, y, larguraPagina - margemX, y);
+    y += 8;
+
+    let total = 0;
+
+    grupos.forEach((grupo) => {
+      if (y > 270) { doc.addPage(); y = 18; }
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(14, 107, 84);
+      doc.text(grupo.categoria.toUpperCase(), margemX, y);
+      y += 6;
+
+      grupo.itens.forEach((item) => {
+        const qtd = QTY.get(item.codigo) || 0;
+        const subtotal = item.preco * qtd;
+        total += subtotal;
+
+        const dataUrlImagem = imagensPorCodigo.get(item.codigo);
+        const temImagem = Boolean(dataUrlImagem);
+        const alturaBloco = temImagem ? alturaImagem + 2 : alturaLinhaMinima;
+
+        if (y + alturaBloco > 280) { doc.addPage(); y = 18; }
+
+        const xTexto = temImagem ? margemX + alturaImagem + 4 : margemX;
+
+        if (temImagem) {
+          try {
+            doc.addImage(dataUrlImagem, formatoDaImagem(dataUrlImagem), margemX, y, alturaImagem, alturaImagem);
+          } catch (erro) {
+            console.error("[Ofertas da Semana] Erro ao inserir imagem no PDF:", erro);
+          }
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10.5);
+        doc.setTextColor(30, 30, 30);
+        doc.text(truncarTexto(item.descricao, 62), xTexto, y + 4);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(110, 110, 110);
+        doc.text(`Cód. ${item.codigo}`, xTexto, y + 9);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9.5);
+        doc.setTextColor(30, 30, 30);
+        doc.text(`${formatarPreco(item.preco)}  x  ${qtd}  =  ${formatarPreco(subtotal)}`, xTexto, y + 14);
+
+        y += alturaBloco + 4;
+      });
+      y += 2;
+    });
+
+    if (y > 265) { doc.addPage(); y = 18; }
+    doc.setDrawColor(220, 220, 220);
+    doc.line(margemX, y, larguraPagina - margemX, y);
+    y += 8;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(20, 20, 20);
+    doc.text(`Total: ${formatarPreco(total)}`, margemX, y);
+
+    const dataArquivo = new Date().toISOString().slice(0, 10);
+    doc.save(`ofertas-da-semana-${dataArquivo}.pdf`);
+  } catch (erro) {
+    console.error("[Ofertas da Semana] Erro ao gerar PDF:", erro);
+    alert("Não consegui gerar o PDF. Tenta de novo.");
+  } finally {
+    botao.disabled = false;
+    botao.textContent = textoOriginal;
+  }
+});
 
 document.getElementById("btn-enviar-interesse").addEventListener("click", () => {
   const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);

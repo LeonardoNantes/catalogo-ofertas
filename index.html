@@ -55,13 +55,17 @@
     <main id="lista-itens" class="lista-itens"></main>
 
     <div class="rodape">
-      <button id="btn-enviar-interesse" class="botao-principal" disabled>Marque os itens de interesse</button>
+      <div class="rodape-botoes">
+        <button id="btn-enviar-interesse" class="botao-principal" disabled>Marque os itens de interesse</button>
+        <button id="btn-gerar-pdf" class="botao-secundario" disabled>Gerar PDF</button>
+      </div>
       <p class="rodape-aviso">Só pra você conhecer as ofertas — o pedido é combinado direto com o vendedor.</p>
     </div>
   </div>
 
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
