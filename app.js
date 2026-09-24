@@ -167,7 +167,14 @@ function toggleInteresse(codigo) {
 }
 
 function renderizarAbas() {
-  const categoriasPresentes = ORDEM_CATEGORIAS.filter((c) => TODOS_ITENS.some((i) => i.categoria === c));
+  // Mostra aba pra qualquer categoria que tiver item de verdade — não só
+  // as 10 fixas de CATEGORIAS_INFO — pra categoria nova criada no Painel
+  // de Preços também aparecer aqui (ela só não tem cor/ícone específicos,
+  // usa o visual genérico de "Outros" via infoCategoria/iconeCategoria).
+  // Em ordem alfabética.
+  const categoriasPresentes = Array.from(new Set(TODOS_ITENS.map((i) => i.categoria)))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
   const abas = [{ key: "todos", label: "Todos" }, ...categoriasPresentes.map((c) => ({ key: c, label: c }))];
 
   const nav = document.getElementById("categoria-tabs");
