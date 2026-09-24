@@ -136,11 +136,18 @@ function formatarPreco(valor) {
   return "R$ " + Number(valor).toFixed(2).replace(".", ",");
 }
 
+// Só o número, sem o "R$" na frente — usado nos cartões do PNG/PDF, onde
+// o "R$" já aparece separado, como um rótulo pequeno em cima do preço.
+function formatarPrecoSemPrefixo(valor) {
+  return Number(valor).toFixed(2).replace(".", ",");
+}
+
 // ---------------- ESTADO DA PÁGINA (interesse / quantidade) ----------------
 const QTY = new Map(); // codigo -> quantidade
 let TODOS_ITENS = [];
 let CATEGORIA_ATIVA = "todos";
 let VENDEDOR_WHATSAPP = null;
+let AREA_VENDEDOR = "SC";
 
 function inc(codigo) {
   QTY.set(codigo, (QTY.get(codigo) || 0) + 1);
@@ -299,6 +306,25 @@ function desenharRetanguloArredondado(ctx, x, y, largura, altura, raio) {
   ctx.closePath();
 }
 
+// Desenha a foto preenchendo todo o espaço (largura x altura) sem esticar/
+// deformar — corta as sobras da foto original, igual o "preencher" do
+// Instagram, em vez de espremer a imagem pra caber.
+function desenharImagemPreenchendo(ctx, img, x, y, largura, altura) {
+  const razaoAlvo = largura / altura;
+  const razaoFoto = img.width / img.height;
+  let sx = 0, sy = 0, sLargura = img.width, sAltura = img.height;
+  if (razaoFoto > razaoAlvo) {
+    // Foto mais "larga" que o espaço: corta as laterais.
+    sLargura = img.height * razaoAlvo;
+    sx = (img.width - sLargura) / 2;
+  } else {
+    // Foto mais "alta" que o espaço: corta em cima/embaixo.
+    sAltura = img.width / razaoAlvo;
+    sy = (img.height - sAltura) / 2;
+  }
+  ctx.drawImage(img, sx, sy, sLargura, sAltura, x, y, largura, altura);
+}
+
 // Quebra um texto em até "maxLinhas" linhas que cabem em "larguraMax" (usa a
 // fonte já configurada no ctx), cortando com "…" se sobrar texto.
 function quebrarTextoCanvas(ctx, texto, larguraMax, maxLinhas) {
@@ -340,7 +366,150 @@ function carregarImageElement(dataUrl) {
 }
 
 const LIMITE_ITENS_PNG = 12;
-const CAMINHO_TEMPLATE_PNG = "template-oferta.jpg";
+
+// Imagem-modelo compartilhada pelo PDF e pelo PNG (formato A4, trocada todo
+// mês). Coordenadas em pixels da própria imagem, marcando a área "em
+// branco" onde os cartões podem ser desenhados sem cobrir a moldura —
+// vale pra qualquer template, desde que sigam sempre esse mesmo molde
+// (mesmo tamanho, mesmo espaço em branco no mesmo lugar).
+const CAMINHO_TEMPLATE_PADRAO = "template-oferta.jpg";
+const TEMPLATE_LARGURA = 1131;
+const TEMPLATE_ALTURA = 1600;
+const TEMPLATE_AREA = { esq: 48, dir: 1082, topo: 210, base: 1554 };
+
+// Cada área pode ter o seu próprio template — útil se um dia esse
+// catálogo for negociado com outra empresa (ex: uma distribuidora
+// parceira), cadastrada como uma área nova, com a própria identidade
+// visual. Basta o arquivo existir em "templates/<nome da área>.jpg"
+// (só o Leonardo sobe esse arquivo, direto no repositório); áreas sem
+// template próprio usam o padrão (o da Atacado Martins).
+function caminhoTemplateDaArea(area) {
+  const nome = String(area || "").trim();
+  return nome ? `templates/${encodeURIComponent(nome)}.jpg` : CAMINHO_TEMPLATE_PADRAO;
+}
+async function carregarTemplateDaArea(area) {
+  const caminhoEspecifico = caminhoTemplateDaArea(area);
+  if (caminhoEspecifico !== CAMINHO_TEMPLATE_PADRAO) {
+    const imagemEspecifica = await carregarImageElement(caminhoEspecifico);
+    if (imagemEspecifica) return imagemEspecifica;
+  }
+  return carregarImageElement(CAMINHO_TEMPLATE_PADRAO);
+}
+
+// O espaço dos dois lados do logo fica livre bem antes do centro (que
+// ainda tem o desenho "Ofertas da Semana"), então o nome do vendedor
+// (esquerda) e a validade (direita) sobem pra esse espaço — a grade de
+// cartões continua começando na altura de sempre (TEMPLATE_AREA.topo).
+const TEMPLATE_TEXTO_TOPO = TEMPLATE_AREA.topo - 5;
+const TEMPLATE_GRADE_TOPO = TEMPLATE_AREA.topo + 18;
+// Respiro do nome/validade em relação à borda da área útil (um "tabzinho"
+// pra não ficar colado, pedido pelo Leonardo).
+const TEMPLATE_TEXTO_INDENT = 22;
+
+// Desenha uma grade de cartões de produto sobre o template (usada pelo
+// PNG e, futuramente, pelo PDF): cartão branco com sombra suave, foto
+// quadrada cortada sem esticar, nome em Montserrat itálico e o preço
+// numa etiqueta preta com brilho dourado, sempre ancorada no rodapé do
+// cartão — não se move de acordo com o tamanho do nome do produto.
+function desenharGradeDeCartoes(ctx, itens, imagensCarregadas, opcoes) {
+  const {
+    colunas, areaEsq, areaTopo, larguraCard, alturaCard, gutterH, gutterV,
+    padCard, larguraFoto, alturaImagem, comSombra,
+  } = opcoes;
+
+  itens.forEach((item, indice) => {
+    const coluna = indice % colunas;
+    const linha = Math.floor(indice / colunas);
+    const x = areaEsq + coluna * (larguraCard + gutterH);
+    const y = areaTopo + linha * (alturaCard + gutterV);
+
+    // Cartão branco, sombra suave (dá referência de profundidade sobre o template)
+    ctx.save();
+    if (comSombra) {
+      ctx.shadowColor = "rgba(20,18,14,0.18)";
+      ctx.shadowBlur = 16;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 5;
+    }
+    ctx.fillStyle = "#FFFFFF";
+    desenharRetanguloArredondado(ctx, x, y, larguraCard, alturaCard, 14);
+    ctx.fill();
+    ctx.restore();
+
+    // Foto (corte "preencher", sem esticar) — ou um fundo neutro, se não tiver foto salva
+    const imagemItem = imagensCarregadas.get(item.codigo);
+    if (imagemItem) {
+      ctx.save();
+      desenharRetanguloArredondado(ctx, x + padCard, y + padCard, larguraFoto, alturaImagem, 8);
+      ctx.clip();
+      desenharImagemPreenchendo(ctx, imagemItem, x + padCard, y + padCard, larguraFoto, alturaImagem);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = "#F4F3EE";
+      desenharRetanguloArredondado(ctx, x + padCard, y + padCard, larguraFoto, alturaImagem, 8);
+      ctx.fill();
+    }
+
+    // Preço — ancorado no final do cartão, etiqueta preta + brilho dourado
+    // (o "R$" já aparece separado, então usa só o número aqui)
+    const precoTexto = formatarPrecoSemPrefixo(item.preco);
+    const alturaBadge = 52;
+    const larguraBadge = larguraFoto;
+    const xBadge = x + padCard;
+    const yBadge = y + alturaCard - padCard - alturaBadge;
+
+    // Título + código — calculados de baixo pra cima, colados no preço
+    // (o espaço "sobrando" fica entre a foto e o texto, não entre o texto e o preço)
+    ctx.font = "400 9.5px 'Work Sans', sans-serif";
+    const textoCodigos = item.codigo_barras
+      ? `Cód. ${item.codigo}  •  Barras ${item.codigo_barras}`
+      : `Cód. ${item.codigo}`;
+    const linhaCodigos = quebrarTextoCanvas(ctx, textoCodigos, larguraFoto, 1)[0];
+
+    ctx.font = "italic 900 15px 'Montserrat', sans-serif";
+    const linhasNome = quebrarTextoCanvas(ctx, item.descricao, larguraFoto, 2);
+
+    const gapCodigoBadge = 14;
+    const gapNomeCodigo = 16;
+    const linhaAlturaNome = 18;
+
+    const yCodigo = yBadge - gapCodigoBadge;
+    const yUltimaLinhaNome = yCodigo - gapNomeCodigo;
+    const yPrimeiraLinhaNome = yUltimaLinhaNome - (linhasNome.length - 1) * linhaAlturaNome;
+
+    ctx.fillStyle = "#1E1E1E";
+    ctx.font = "italic 900 15px 'Montserrat', sans-serif";
+    linhasNome.forEach((linha, li) => ctx.fillText(linha, x + padCard, yPrimeiraLinhaNome + li * linhaAlturaNome));
+
+    ctx.fillStyle = "#8A8A8A";
+    ctx.font = "400 9.5px 'Work Sans', sans-serif";
+    ctx.fillText(linhaCodigos, x + padCard, yCodigo);
+
+    ctx.save();
+    ctx.shadowColor = "rgba(246,178,27,0.5)";
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.fillStyle = "#161513";
+    desenharRetanguloArredondado(ctx, xBadge, yBadge, larguraBadge, alturaBadge, 10);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "700 10px 'Work Sans', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("R$", xBadge + 11, yBadge + 16);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#D8D6CF";
+    ctx.fillText("unid", xBadge + larguraBadge - 11, yBadge + 16);
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "italic 900 34px 'Montserrat', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(precoTexto, x + larguraCard / 2, yBadge + alturaBadge - 10);
+    ctx.textAlign = "left";
+  });
+}
 
 document.getElementById("btn-gerar-png").addEventListener("click", async () => {
   const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
@@ -380,115 +549,70 @@ document.getElementById("btn-gerar-png").addEventListener("click", async () => {
       })
     );
 
-    const imagemTemplate = await carregarImageElement(CAMINHO_TEMPLATE_PNG);
+    const imagemTemplate = await carregarTemplateDaArea(AREA_VENDEDOR);
 
     if (document.fonts && document.fonts.ready) {
       try { await document.fonts.ready; } catch (erroFontes) { /* segue com a fonte padrão */ }
     }
 
-    // Grade de 3 colunas x 4 linhas = 12 cartões, dentro do espaço vazio
-    // da imagem-modelo (entre o logo no topo e os enfeites do rodapé).
-    const larguraCanvas = 1080;
-    const alturaCanvas = 1920;
-    const colunas = 3;
-    const linhasGrade = 4;
-    const margemX = 70;
-    const gutterH = 20;
-    const gutterV = 16;
-    const areaTopoY = 300;
-    const areaRodapeY = 1700;
+    // Grade de 4 colunas x 3 linhas = 12 cartões, dentro do espaço em
+    // branco da imagem-modelo (entre a moldura decorada e o rodapé). Uma
+    // linha de texto com o vendedor + período fica logo abaixo do topo da
+    // área branca, e a grade começa abaixo dessa linha.
+    const larguraCanvas = TEMPLATE_LARGURA;
+    const alturaCanvas = TEMPLATE_ALTURA;
+    const colunas = 4;
+    const linhasGrade = 3;
+    const gutterH = 30;
+    const gutterV = 22;
+    const areaEsq = TEMPLATE_AREA.esq;
+    const areaDir = TEMPLATE_AREA.dir;
+    const areaBase = TEMPLATE_AREA.base;
+    const yLinhaVendedor = TEMPLATE_TEXTO_TOPO;
+    const areaTopo = TEMPLATE_GRADE_TOPO;
 
-    const larguraUtil = larguraCanvas - margemX * 2;
+    const larguraUtil = areaDir - areaEsq;
+    const alturaUtil = areaBase - areaTopo;
     const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
-    const alturaCard = (areaRodapeY - areaTopoY - gutterV * (linhasGrade - 1)) / linhasGrade;
+    const alturaCard = (alturaUtil - gutterV * (linhasGrade - 1)) / linhasGrade;
     const padCard = 10;
     const larguraFoto = larguraCard - padCard * 2;
-    const alturaImagem = alturaCard - 150;
+    const alturaImagem = larguraFoto; // foto quadrada
 
     const canvas = document.createElement("canvas");
     canvas.width = larguraCanvas;
     canvas.height = alturaCanvas;
     const ctx = canvas.getContext("2d");
 
-    // Fundo: a imagem-modelo (ou um fundo escuro liso, se ela não carregar)
+    // Fundo: a imagem-modelo (ou um fundo branco liso, se ela não carregar)
     if (imagemTemplate) {
       ctx.drawImage(imagemTemplate, 0, 0, larguraCanvas, alturaCanvas);
     } else {
-      ctx.fillStyle = "#171613";
+      ctx.fillStyle = "#FFFFFF";
       ctx.fillRect(0, 0, larguraCanvas, alturaCanvas);
     }
 
-    // Grade de cartões dos produtos, em cartões brancos por cima do fundo
-    itensOrdenados.forEach((item, indice) => {
-      const coluna = indice % colunas;
-      const linha = Math.floor(indice / colunas);
-      const x = margemX + coluna * (larguraCard + gutterH);
-      const y = areaTopoY + linha * (alturaCard + gutterV);
-
-      // Cartão branco com sombra suave, pra destacar sobre o fundo escuro
-      ctx.save();
-      ctx.shadowColor = "rgba(0,0,0,0.35)";
-      ctx.shadowBlur = 14;
-      ctx.shadowOffsetY = 6;
-      ctx.fillStyle = "#FFFFFF";
-      desenharRetanguloArredondado(ctx, x, y, larguraCard, alturaCard, 14);
-      ctx.fill();
-      ctx.restore();
-
-      // Foto (ou um fundo neutro, quando não tiver foto salva)
-      const img = imagensCarregadas.get(item.codigo);
-      if (img) {
-        ctx.save();
-        desenharRetanguloArredondado(ctx, x + padCard, y + padCard, larguraFoto, alturaImagem, 8);
-        ctx.clip();
-        ctx.drawImage(img, x + padCard, y + padCard, larguraFoto, alturaImagem);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = "#F4F3EE";
-        desenharRetanguloArredondado(ctx, x + padCard, y + padCard, larguraFoto, alturaImagem, 8);
-        ctx.fill();
-      }
-
-      let textY = y + padCard + alturaImagem + 24;
-
-      // Nome do produto (até 2 linhas)
-      ctx.fillStyle = "#1E1E1E";
-      ctx.font = "700 17px 'Work Sans', sans-serif";
-      const linhasNome = quebrarTextoCanvas(ctx, item.descricao, larguraFoto, 2);
-      linhasNome.forEach((linha, i) => ctx.fillText(linha, x + padCard, textY + i * 20));
-      textY += linhasNome.length * 20 + 6;
-
-      // Código Martins + código de barras, numa linha só
-      ctx.fillStyle = "#787878";
-      ctx.font = "400 12px 'Work Sans', sans-serif";
-      const textoCodigos = item.codigo_barras
-        ? `Cód. ${item.codigo}  •  Barras ${item.codigo_barras}`
-        : `Cód. ${item.codigo}`;
-      ctx.fillText(quebrarTextoCanvas(ctx, textoCodigos, larguraFoto, 1)[0], x + padCard, textY);
-      textY += 28;
-
-      // Preço em destaque (etiqueta verde) — única informação de valor no cartão
-      const precoTexto = formatarPreco(item.preco);
-      ctx.font = "700 20px 'Work Sans', sans-serif";
-      const larguraBadge = ctx.measureText(precoTexto).width + 20;
-      ctx.fillStyle = "#0E6B54";
-      desenharRetanguloArredondado(ctx, x + padCard, textY - 20, larguraBadge, 28, 8);
-      ctx.fill();
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillText(precoTexto, x + padCard + 10, textY - 3);
-    });
-
-    // Rodapé: nome do vendedor + período da semana, centralizado
+    // Vendedor (esquerda) e período (direita) — aproveitando o espaço
+    // livre dos dois lados do logo, que fica desimpedido bem mais cedo
+    // que o centro (onde ainda está o desenho "Ofertas da Semana")
     const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
     const textoSemana = (document.getElementById("texto-semana").textContent || "").trim();
-    ctx.textAlign = "center";
-    ctx.fillStyle = "#FFFFFF";
-    ctx.font = "700 30px 'Space Grotesk', sans-serif";
-    ctx.fillText(nomeVendedor, larguraCanvas / 2, 1800);
-    ctx.fillStyle = "#F4C430";
-    ctx.font = "400 20px 'Work Sans', sans-serif";
-    ctx.fillText(textoSemana, larguraCanvas / 2, 1836);
+    ctx.fillStyle = "#2A2925";
+    ctx.font = "600 15px 'Work Sans', sans-serif";
+    if (nomeVendedor) {
+      ctx.textAlign = "left";
+      ctx.fillText(nomeVendedor, areaEsq + TEMPLATE_TEXTO_INDENT, yLinhaVendedor);
+    }
+    if (textoSemana) {
+      ctx.textAlign = "right";
+      ctx.fillText(textoSemana, areaDir - TEMPLATE_TEXTO_INDENT, yLinhaVendedor);
+    }
     ctx.textAlign = "left";
+
+    desenharGradeDeCartoes(ctx, itensOrdenados, imagensCarregadas, {
+      colunas, areaEsq, areaTopo, larguraCard, alturaCard, gutterH, gutterV,
+      padCard, larguraFoto, alturaImagem, comSombra: true,
+    });
 
     const dataArquivo = new Date().toISOString().slice(0, 10);
     const link = document.createElement("a");
@@ -517,117 +641,195 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
 
     // Carrega as fotos dos itens que tiverem, em paralelo, antes de montar
     // o PDF (os itens sem foto salva simplesmente não mostram imagem).
-    const imagensPorCodigo = new Map();
+    const dataUrlsPorCodigo = new Map();
     await Promise.all(
       itensMarcados
         .filter((i) => i.foto_url)
         .map(async (i) => {
           const dataUrl = await carregarImagemComoDataUrl(i.foto_url);
-          if (dataUrl) imagensPorCodigo.set(i.codigo, dataUrl);
+          if (dataUrl) dataUrlsPorCodigo.set(i.codigo, dataUrl);
         })
     );
+    const imagensCarregadas = new Map();
+    await Promise.all(
+      Array.from(dataUrlsPorCodigo.entries()).map(async ([codigo, dataUrl]) => {
+        const img = await carregarImageElement(dataUrl);
+        if (img) imagensCarregadas.set(codigo, img);
+      })
+    );
+
+    // Imagem-modelo (mesma do PNG, já escolhida pela área do vendedor) —
+    // convertida pra data URL, porque o jsPDF precisa de base64/URL pra
+    // inserir a imagem, não do elemento <img>.
+    const imagemTemplateEl = await carregarTemplateDaArea(AREA_VENDEDOR);
+    let templateDataUrl = null;
+    if (imagemTemplateEl) {
+      const canvasTemplate = document.createElement("canvas");
+      canvasTemplate.width = imagemTemplateEl.width;
+      canvasTemplate.height = imagemTemplateEl.height;
+      canvasTemplate.getContext("2d").drawImage(imagemTemplateEl, 0, 0);
+      templateDataUrl = canvasTemplate.toDataURL("image/jpeg", 0.92);
+    }
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: "mm", format: "a4" });
-    const margemX = 12;
     const larguraPagina = 210;
     const alturaPagina = 297;
-    const larguraUtil = larguraPagina - margemX * 2;
-    const colunas = 4;
-    const gutterH = 4;
-    const gutterV = 5;
-    const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
-    const alturaImagem = larguraCard - 4;
-    const alturaCard = alturaImagem + 27;
-    let y = 18;
 
+    // Área "segura" da imagem-modelo (as mesmas medidas usadas no PNG),
+    // convertida de pixels pra milímetros.
+    const escalaX = larguraPagina / TEMPLATE_LARGURA;
+    const escalaY = alturaPagina / TEMPLATE_ALTURA;
+    const areaEsq = TEMPLATE_AREA.esq * escalaX;
+    const areaDir = TEMPLATE_AREA.dir * escalaX;
+    const areaBase = TEMPLATE_AREA.base * escalaY;
+    const yTexto = TEMPLATE_TEXTO_TOPO * escalaY;
+    const areaTopo = TEMPLATE_GRADE_TOPO * escalaY;
+    const indentTexto = TEMPLATE_TEXTO_INDENT * escalaX;
+    const margemX = areaEsq;
+    const larguraUtil = areaDir - areaEsq;
+
+    // Desenha a imagem-modelo cobrindo a página inteira — chamada de novo
+    // a cada página nova (addPage não mantém o que já foi desenhado).
+    function desenharFundo() {
+      if (templateDataUrl) {
+        doc.addImage(templateDataUrl, "JPEG", 0, 0, larguraPagina, alturaPagina);
+      }
+    }
+
+    desenharFundo();
+
+    // Vendedor (esquerda) e período (direita) — mesmo espaço livre dos
+    // dois lados do logo já usado no PNG, mais alto que o centro.
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor(20, 20, 20);
-    doc.text("Ofertas da Semana", margemX, y);
-    y += 7;
-
-    doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.setTextColor(90, 90, 90);
+    doc.setTextColor(42, 41, 37);
     const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
     const textoSemana = (document.getElementById("texto-semana").textContent || "").trim();
-    doc.text([nomeVendedor, textoSemana].filter(Boolean).join(" · "), margemX, y);
-    y += 9;
-    doc.setDrawColor(220, 220, 220);
-    doc.line(margemX, y, larguraPagina - margemX, y);
-    y += 8;
+    if (nomeVendedor) doc.text(nomeVendedor, margemX + indentTexto, yTexto);
+    if (textoSemana) doc.text(textoSemana, areaDir - indentTexto, yTexto, { align: "right" });
+
+    let y = areaTopo;
+
+    const colunas = 4;
+    const gutterH = 4;
+    const gutterV = 7;
+    const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
+    const padCard = 2.2;
+    const larguraFoto = larguraCard - padCard * 2;
+    const alturaFoto = larguraFoto; // foto quadrada, igual à do PNG
+    const alturaBadge = 9.6;
+    const alturaTextos = 12.5; // nome (até 2 linhas) + código, entre a foto e a etiqueta
+    const alturaCard = padCard + alturaFoto + alturaTextos + alturaBadge + padCard;
+
+    // Recorta cada foto (sem esticar) num quadrado pronto, na resolução
+    // final aproximada — mesma lógica de corte usada no PNG
+    // (desenharImagemPreenchendo), só que desenhando num canvas à parte
+    // em vez de direto no PDF (o jsPDF não recorta imagem sozinho).
+    const ladoFotoPx = Math.round(larguraFoto * (300 / 25.4)); // ~300dpi
+    const fotosRecortadas = new Map();
+    imagensCarregadas.forEach((img, codigo) => {
+      const canvasFoto = document.createElement("canvas");
+      canvasFoto.width = ladoFotoPx;
+      canvasFoto.height = ladoFotoPx;
+      desenharImagemPreenchendo(canvasFoto.getContext("2d"), img, 0, 0, ladoFotoPx, ladoFotoPx);
+      fotosRecortadas.set(codigo, canvasFoto.toDataURL("image/jpeg", 0.9));
+    });
 
     grupos.forEach((grupo) => {
-      if (y + 8 + alturaCard > alturaPagina - margemX) { doc.addPage(); y = 18; }
-      doc.setFont("helvetica", "bold");
+      if (y + 6 + alturaCard > areaBase) { doc.addPage(); desenharFundo(); y = areaTopo + 6; }
+
+      doc.setFont("helvetica", "bolditalic");
       doc.setFontSize(11);
-      doc.setTextColor(14, 107, 84);
+      doc.setTextColor(150, 106, 18);
       doc.text(grupo.categoria.toUpperCase(), margemX, y);
-      y += 6;
+      y += 5.5;
 
       let coluna = 0;
       grupo.itens.forEach((item) => {
-        if (coluna === 0 && y + alturaCard > alturaPagina - margemX) {
+        if (coluna === 0 && y + alturaCard > areaBase) {
           doc.addPage();
-          y = 18;
+          desenharFundo();
+          y = areaTopo + 6;
         }
 
         const x = margemX + coluna * (larguraCard + gutterH);
 
-        // Moldura do cartão do produto
+        // Cartão branco com borda leve (sem sombra — o jsPDF não faz blur)
         doc.setDrawColor(225, 224, 218);
+        doc.setFillColor(255, 255, 255);
         doc.setLineWidth(0.2);
-        doc.roundedRect(x, y, larguraCard, alturaCard, 1.5, 1.5, "S");
+        doc.roundedRect(x, y, larguraCard, alturaCard, 1.8, 1.8, "FD");
 
-        // Foto (ou um fundo neutro no lugar, quando não tiver foto salva)
-        const dataUrlImagem = imagensPorCodigo.get(item.codigo);
-        const padCard = 2;
-        if (dataUrlImagem) {
+        // Foto (recorte quadrado já pronto, sem esticar) ou fundo neutro
+        const fotoDataUrl = fotosRecortadas.get(item.codigo);
+        if (fotoDataUrl) {
           try {
-            doc.addImage(dataUrlImagem, formatoDaImagem(dataUrlImagem), x + padCard, y + padCard, larguraCard - padCard * 2, alturaImagem);
+            doc.addImage(fotoDataUrl, "JPEG", x + padCard, y + padCard, larguraFoto, alturaFoto);
           } catch (erro) {
             console.error("[Ofertas da Semana] Erro ao inserir imagem no PDF:", erro);
           }
         } else {
           doc.setFillColor(244, 243, 238);
-          doc.rect(x + padCard, y + padCard, larguraCard - padCard * 2, alturaImagem, "F");
+          doc.rect(x + padCard, y + padCard, larguraFoto, alturaFoto, "F");
         }
 
-        let textY = y + padCard + alturaImagem + 4.5;
+        // Preço — etiqueta preta ancorada no rodapé do cartão (não se
+        // move de acordo com o tamanho do nome do produto). O "R$" já
+        // aparece separado, então usa só o número aqui.
+        const precoTexto = formatarPrecoSemPrefixo(item.preco);
+        const larguraBadge = larguraFoto;
+        const xBadge = x + padCard;
+        const yBadge = y + alturaCard - padCard - alturaBadge;
 
-        // Nome do produto (até 2 linhas)
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(7.8);
-        doc.setTextColor(30, 30, 30);
-        const todasLinhas = doc.splitTextToSize(item.descricao, larguraCard - padCard * 2);
-        const linhasNome = todasLinhas.slice(0, 2);
-        if (todasLinhas.length > 2 && linhasNome[1].length > 1) {
-          linhasNome[1] = linhasNome[1].slice(0, -1) + "…";
-        }
-        linhasNome.forEach((linha, i) => doc.text(linha, x + padCard, textY + i * 3.2));
-        textY += linhasNome.length * 3.2 + 3;
-
-        // Código Martins + código de barras, lado a lado numa linha só
+        // Nome + código, calculados de baixo pra cima, colados na etiqueta
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(5.6);
-        doc.setTextColor(120, 120, 120);
+        doc.setFontSize(6.2);
         const textoCodigos = item.codigo_barras
           ? `Cód. ${item.codigo}  •  Barras ${item.codigo_barras}`
           : `Cód. ${item.codigo}`;
-        const linhaCodigos = doc.splitTextToSize(textoCodigos, larguraCard - padCard * 2)[0];
-        doc.text(linhaCodigos, x + padCard, textY);
-        textY += 4.5;
+        const linhaCodigos = doc.splitTextToSize(textoCodigos, larguraFoto)[0];
 
-        // Preço em destaque (etiqueta verde) — única informação de valor no cartão
-        const precoTexto = formatarPreco(item.preco);
+        doc.setFont("helvetica", "bolditalic");
+        doc.setFontSize(8.3);
+        const todasLinhasNome = doc.splitTextToSize(item.descricao, larguraFoto);
+        const linhasNome = todasLinhasNome.slice(0, 2);
+        if (todasLinhasNome.length > 2 && linhasNome[1].length > 1) {
+          linhasNome[1] = linhasNome[1].slice(0, -1) + "…";
+        }
+
+        const gapCodigoBadge = 2.6;
+        const gapNomeCodigo = 3.4;
+        const linhaAlturaNome = 3.4;
+
+        const yCodigo = yBadge - gapCodigoBadge;
+        const yUltimaLinhaNome = yCodigo - gapNomeCodigo;
+        const yPrimeiraLinhaNome = yUltimaLinhaNome - (linhasNome.length - 1) * linhaAlturaNome;
+
+        doc.setTextColor(30, 30, 30);
+        doc.setFont("helvetica", "bolditalic");
+        doc.setFontSize(8.3);
+        linhasNome.forEach((linha, li) => doc.text(linha, x + padCard, yPrimeiraLinhaNome + li * linhaAlturaNome));
+
+        doc.setTextColor(130, 130, 130);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.2);
+        doc.text(linhaCodigos, x + padCard, yCodigo);
+
+        doc.setFillColor(22, 21, 19);
+        doc.roundedRect(xBadge, yBadge, larguraBadge, alturaBadge, 1.6, 1.6, "F");
+
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(9.5);
-        const larguraBadge = doc.getTextWidth(precoTexto) + 4;
-        doc.setFillColor(14, 107, 84);
-        doc.roundedRect(x + padCard, textY - 3.3, larguraBadge, 5.4, 1.2, 1.2, "F");
+        doc.setFontSize(6.6);
         doc.setTextColor(255, 255, 255);
-        doc.text(precoTexto, x + padCard + 2, textY + 0.3);
+        doc.text("R$", xBadge + 2, yBadge + 3.4);
+        doc.setTextColor(216, 214, 207);
+        doc.text("unid", xBadge + larguraBadge - 2, yBadge + 3.4, { align: "right" });
+
+        doc.setFont("helvetica", "bolditalic");
+        doc.setFontSize(13.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(precoTexto, x + larguraCard / 2, yBadge + alturaBadge - 2, { align: "center" });
 
         coluna++;
         if (coluna === colunas) {
@@ -714,6 +916,7 @@ async function iniciar() {
   }
 
   VENDEDOR_WHATSAPP = vendedor.whatsapp;
+  AREA_VENDEDOR = vendedor.area || "SC";
   document.getElementById("nome-vendedor").textContent = vendedor.nome;
 
   const fotoEl = document.getElementById("foto-vendedor");
