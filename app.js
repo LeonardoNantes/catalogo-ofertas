@@ -179,6 +179,9 @@ function renderizarAbas() {
       CATEGORIA_ATIVA = btn.dataset.key;
       renderizarAbas();
       renderizarItens();
+      // Ao trocar de aba, volta a rolagem pro início — senão a lista nova
+      // abre no meio, na mesma posição em que a aba anterior tinha ficado.
+      window.scrollTo({ top: 0, behavior: "instant" });
     });
   });
 }
