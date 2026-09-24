@@ -185,7 +185,9 @@ function renderizarAbas() {
 
 function renderizarItens() {
   const lista = document.getElementById("lista-itens");
-  const itensFiltrados = TODOS_ITENS.filter((i) => CATEGORIA_ATIVA === "todos" || i.categoria === CATEGORIA_ATIVA);
+  const itensFiltrados = TODOS_ITENS
+    .filter((i) => CATEGORIA_ATIVA === "todos" || i.categoria === CATEGORIA_ATIVA)
+    .sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR"));
 
   if (itensFiltrados.length === 0) {
     lista.innerHTML = '<p class="sem-itens">Nenhum item nessa categoria.</p>';
@@ -699,8 +701,8 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
 
     desenharFundo();
 
-    // Vendedor (esquerda) e período (direita) — mesmo espaço livre dos
-    // dois lados do logo já usado no PNG, mais alto que o centro.
+    // Vendedor (esquerda) e período (direita) — só na primeira página
+    // (decisão do Leonardo: num PDF fica melhor assim).
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(42, 41, 37);
