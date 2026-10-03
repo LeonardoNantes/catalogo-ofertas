@@ -249,17 +249,20 @@ function atualizarRodape() {
   const btn = document.getElementById("btn-enviar-interesse");
   const btnPdf = document.getElementById("btn-gerar-pdf");
   const btnPng = document.getElementById("btn-gerar-png");
+  const btnPdfPedido = document.getElementById("btn-pdf-pedido");
   const totalItens = Array.from(QTY.values()).filter((q) => q > 0).length;
   if (totalItens > 0) {
     btn.textContent = `Enviar interesse (${totalItens} ${totalItens === 1 ? "item" : "itens"})`;
     btn.disabled = false;
     btnPdf.disabled = false;
     btnPng.disabled = false;
+    btnPdfPedido.disabled = false;
   } else {
     btn.textContent = "Marque os itens de interesse";
     btn.disabled = true;
     btnPdf.disabled = true;
     btnPng.disabled = true;
+    btnPdfPedido.disabled = true;
   }
 }
 
@@ -1028,6 +1031,112 @@ document.getElementById("btn-enviar-interesse").addEventListener("click", () => 
 
   const url = `https://wa.me/${VENDEDOR_WHATSAPP}?text=${encodeURIComponent(mensagem)}`;
   window.open(url, "_blank");
+});
+
+// "Gerar PDF do pré-pedido" — cópia simples (só texto, sem molde/fotos) dos
+// mesmos itens marcados que já vão pro WhatsApp, com código, quantidade e
+// preço de cada um. Serve de backup pra quando o cliente não consegue usar
+// o WhatsApp Web no computador dele, mas ainda quer baixar/mandar um PDF
+// com os itens de interesse.
+document.getElementById("btn-pdf-pedido").addEventListener("click", () => {
+  const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
+  if (itensMarcados.length === 0) return;
+
+  const botao = document.getElementById("btn-pdf-pedido");
+  botao.disabled = true;
+
+  try {
+    const grupos = agruparPorCategoriaOrdenado(itensMarcados);
+
+    const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
+    const textoSemana = (document.getElementById("texto-semana").textContent || "").trim();
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const margemX = 18;
+    const larguraPagina = 210;
+    const larguraUtil = larguraPagina - margemX * 2;
+    const areaBase = 280;
+    let y = 20;
+
+    function novaPaginaSeNecessario(alturaNecessaria) {
+      if (y + alturaNecessaria > areaBase) {
+        doc.addPage();
+        y = 20;
+      }
+    }
+
+    doc.setFont("helvetica", "bolditalic");
+    doc.setFontSize(18);
+    doc.setTextColor(14, 107, 84);
+    doc.text("Pré-pedido — Ofertas da Semana", margemX, y);
+    y += 8;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(90, 90, 90);
+    const dataTexto = new Date().toLocaleDateString("pt-BR");
+    doc.text(`Vendedor: ${nomeVendedor || "-"}   •   Data: ${dataTexto}`, margemX, y);
+    y += 6;
+    if (textoSemana) {
+      doc.text(textoSemana, margemX, y);
+      y += 6;
+    }
+    y += 5;
+
+    grupos.forEach((grupo) => {
+      novaPaginaSeNecessario(14);
+
+      doc.setFont("helvetica", "bolditalic");
+      doc.setFontSize(12);
+      doc.setTextColor(11, 87, 68);
+      doc.text(grupo.categoria.toUpperCase(), margemX, y);
+      y += 2.5;
+
+      doc.setDrawColor(220, 230, 226);
+      doc.setLineWidth(0.3);
+      doc.line(margemX, y, margemX + larguraUtil, y);
+      y += 6.5;
+
+      grupo.itens.forEach((item) => {
+        novaPaginaSeNecessario(9);
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(40, 40, 40);
+        const descricaoLinha = doc.splitTextToSize(item.descricao, larguraUtil * 0.62)[0];
+        doc.text(descricaoLinha, margemX, y);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(130, 130, 130);
+        doc.text(`Cód. ${item.codigo}  •  Qtd: ${QTY.get(item.codigo)}`, margemX, y + 4.4);
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10.5);
+        doc.setTextColor(14, 107, 84);
+        doc.text(formatarPreco(item.preco), margemX + larguraUtil, y, { align: "right" });
+
+        y += 9.5;
+      });
+
+      y += 3.5;
+    });
+
+    novaPaginaSeNecessario(10);
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(8.5);
+    doc.setTextColor(140, 140, 140);
+    doc.text("Preços sujeitos a confirmação — o pedido é combinado direto com o vendedor.", margemX, y);
+
+    const dataArquivo = new Date().toISOString().slice(0, 10);
+    doc.save(`pre-pedido-ofertas-da-semana-${dataArquivo}.pdf`);
+  } catch (erro) {
+    console.error("[Ofertas da Semana] Erro ao gerar PDF do pedido:", erro);
+    alert("Não consegui gerar o PDF. Tenta de novo.");
+  } finally {
+    botao.disabled = false;
+  }
 });
 
 // ---------------- BOOT ----------------

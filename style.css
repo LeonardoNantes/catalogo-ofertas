@@ -220,15 +220,39 @@ button { font-family: inherit; cursor: pointer; }
   background: #FFFFFF;
   border-top: 0.5px solid rgba(31,30,29,0.12);
   box-shadow: 0 -6px 20px rgba(32,31,28,0.06);
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
 }
 .rodape .botao-principal {
-  width: 100%; padding: 15px; border-radius: 14px; font-size: 15px; border: none;
+  flex: 1;
+  min-width: 0;
+  padding: 15px 10px; border-radius: 14px; font-size: 14px; border: none;
   background: linear-gradient(135deg, #0E6B54, #0B5744);
   box-shadow: 0 6px 18px rgba(14,107,84,0.3);
   transition: box-shadow 0.15s, transform 0.1s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .rodape .botao-principal:active { transform: scale(0.98); }
 .rodape .botao-principal:disabled { background: #F0EEE6; color: #6B6A62; cursor: default; box-shadow: none; }
+
+.botao-pre-pedido {
+  flex-shrink: 0;
+  width: 54px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(14,107,84,0.3);
+  background: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.1s;
+}
+.botao-pre-pedido:active { transform: scale(0.95); }
+.botao-pre-pedido:disabled { border-color: rgba(31,30,29,0.12); cursor: default; }
+.botao-pre-pedido:disabled svg { stroke: #B7B5AC; }
 
 .botao-pdf {
   width: 40px; height: 40px;
