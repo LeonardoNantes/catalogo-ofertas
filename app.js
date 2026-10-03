@@ -148,6 +148,7 @@ let TODOS_ITENS = [];
 let CATEGORIA_ATIVA = "todos";
 let VENDEDOR_WHATSAPP = null;
 let AREA_VENDEDOR = "SC";
+let VENDEDOR_FOTO_URL = null;
 
 function inc(codigo) {
   QTY.set(codigo, (QTY.get(codigo) || 0) + 1);
@@ -377,24 +378,26 @@ function carregarImageElement(dataUrl) {
   });
 }
 
-const LIMITE_ITENS_PNG = 12;
-
-// Imagem-modelo compartilhada pelo PDF e pelo PNG (formato A4, trocada todo
-// mês). Coordenadas em pixels da própria imagem, marcando a área "em
-// branco" onde os cartões podem ser desenhados sem cobrir a moldura —
-// vale pra qualquer template, desde que sigam sempre esse mesmo molde
-// (mesmo tamanho, mesmo espaço em branco no mesmo lugar).
+// Imagem-modelo compartilhada pelo PDF e pelo PNG — molde novo (mesmo
+// padrão adotado no catálogo Impala em out/2026), formato A4 em resolução
+// maior que o molde antigo (1414x2000, era 1131x1600) e cabeçalho mais
+// enxuto, o que abre espaço pra uma 4ª fileira de cartões. Coordenadas em
+// pixels da própria imagem, marcando a área "em branco" onde os cartões
+// podem ser desenhados sem cobrir a moldura — vale pra qualquer template,
+// desde que sigam sempre esse mesmo molde (mesmo tamanho, mesmo espaço em
+// branco no mesmo lugar).
 const CAMINHO_TEMPLATE_PADRAO = "template-oferta.jpg";
-const TEMPLATE_LARGURA = 1131;
-const TEMPLATE_ALTURA = 1600;
-const TEMPLATE_AREA = { esq: 48, dir: 1082, topo: 210, base: 1554 };
+const TEMPLATE_LARGURA = 1414;
+const TEMPLATE_ALTURA = 2000;
+const TEMPLATE_AREA = { esq: 40, dir: 1368, topo: 140, base: 1965 };
 
 // Cada área pode ter o seu próprio template — útil se um dia esse
 // catálogo for negociado com outra empresa (ex: uma distribuidora
 // parceira), cadastrada como uma área nova, com a própria identidade
 // visual. Basta o arquivo existir em "templates/<nome da área>.jpg"
-// (só o Leonardo sobe esse arquivo, direto no repositório); áreas sem
-// template próprio usam o padrão (o da Atacado Martins).
+// (só o Leonardo sobe esse arquivo, direto no repositório, seguindo o
+// mesmo molde/tamanho 1414x2000); áreas sem template próprio usam o
+// padrão (o da Atacado Martins).
 function caminhoTemplateDaArea(area) {
   const nome = String(area || "").trim();
   return nome ? `templates/${encodeURIComponent(nome)}.jpg` : CAMINHO_TEMPLATE_PADRAO;
@@ -408,15 +411,117 @@ async function carregarTemplateDaArea(area) {
   return carregarImageElement(CAMINHO_TEMPLATE_PADRAO);
 }
 
-// O espaço dos dois lados do logo fica livre bem antes do centro (que
-// ainda tem o desenho "Ofertas da Semana"), então o nome do vendedor
-// (esquerda) e a validade (direita) sobem pra esse espaço — a grade de
-// cartões continua começando na altura de sempre (TEMPLATE_AREA.topo).
-const TEMPLATE_TEXTO_TOPO = TEMPLATE_AREA.topo - 5;
-const TEMPLATE_GRADE_TOPO = TEMPLATE_AREA.topo + 18;
-// Respiro do nome/validade em relação à borda da área útil (um "tabzinho"
-// pra não ficar colado, pedido pelo Leonardo).
+// Foto do vendedor (redonda, anel dourado) desenhada do lado esquerdo do
+// cabeçalho, com o nome ao lado — mesmo padrão novo do Impala. A validade
+// continua do lado direito, igual já era.
+const VENDEDOR_FOTO_DIAMETRO = 100;
+const VENDEDOR_FOTO_Y_CENTRO = 80;
+const VENDEDOR_INDENT = 22;
+const TEMPLATE_TEXTO_TOPO = VENDEDOR_FOTO_Y_CENTRO + 10;
+// Respiro da validade em relação à borda da área útil (um "tabzinho" pra
+// não ficar colado, pedido pelo Leonardo).
 const TEMPLATE_TEXTO_INDENT = 22;
+
+// ---------- Grade da Imagem (PNG): tamanho calculado pelo conteúdo ----------
+// Em vez de dividir o espaço disponível em fileiras de altura fixa (o que
+// deixava sobra de espaço em branco embaixo de cada cartão), a altura do
+// cartão é calculada a partir do que ele realmente precisa (foto + nome +
+// código + etiqueta) — mesma lógica já usada no PDF. Isso permite caber 4
+// fileiras (16 itens) em vez de 3 (12), com a foto um pouco mais baixa que
+// larga (GRADE_FATOR_ALTURA_FOTO) em vez de quadrada.
+const GRADE_GAP_FOTO_NOME = 20;
+const GRADE_GAP_NOME_CODIGO = 16;
+const GRADE_GAP_CODIGO_BADGE = 14;
+const GRADE_LINHA_ALTURA_NOME = 18;
+const GRADE_MAX_LINHAS_NOME = 2;
+const GRADE_ALTURA_BADGE = 52;
+const GRADE_FATOR_ALTURA_FOTO = 0.93;
+// Mesma ideia, só que pro PDF (milímetros, fontes proporcionalmente um
+// pouco maiores) — precisa encolher um pouco mais a foto pra caber as
+// mesmas 4 fileiras (16 itens) por página.
+const PDF_FATOR_ALTURA_FOTO = 0.84;
+// A Imagem (PNG) é desenhada numa resolução 2x maior que o tamanho final
+// do molde (reduzida de volta ao exportar), só pra o texto ficar nítido —
+// o PDF é vetorial (sempre nítido), a Imagem é raster e precisa de mais
+// pixels reais.
+const PNG_ESCALA = 2;
+
+function calcularGradePng() {
+  const colunas = 4;
+  const gutterH = 30;
+  const gutterV = 22;
+  const padCard = 10;
+  const { esq: areaEsq, dir: areaDir, topo: areaTopo, base: areaBase } = TEMPLATE_AREA;
+  const larguraUtil = areaDir - areaEsq;
+  const alturaUtil = areaBase - areaTopo;
+  const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
+  const larguraFoto = larguraCard - 10 * 2;
+  const alturaImagem = larguraFoto * GRADE_FATOR_ALTURA_FOTO;
+
+  const alturaBlocoTexto =
+    GRADE_GAP_FOTO_NOME +
+    GRADE_MAX_LINHAS_NOME * GRADE_LINHA_ALTURA_NOME +
+    GRADE_GAP_NOME_CODIGO +
+    GRADE_GAP_CODIGO_BADGE;
+  const alturaCard = padCard + alturaImagem + alturaBlocoTexto + GRADE_ALTURA_BADGE + padCard;
+
+  const linhasGrade = Math.max(1, Math.floor((alturaUtil + gutterV) / (alturaCard + gutterV)));
+
+  return {
+    colunas, gutterH, gutterV, padCard, areaEsq, areaTopo, alturaUtil,
+    larguraCard, alturaCard, larguraFoto, alturaImagem,
+    linhasGrade, limite: colunas * linhasGrade,
+  };
+}
+
+// Quando o carrinho de itens marcados tem menos itens do que cabe na
+// grade, em vez de deixar a sobra toda embaixo (grade "grudada" no topo),
+// o espaço entre as fileiras fica sempre igual e o bloco inteiro é
+// centralizado verticalmente na área útil.
+function ajustarEspacamentoGradePng(grade, totalItens) {
+  const { colunas, gutterV, alturaCard, areaTopo, alturaUtil } = grade;
+  const linhasReais = Math.max(1, Math.ceil(totalItens / colunas));
+  const alturaBlocoGrade = linhasReais * alturaCard + (linhasReais - 1) * gutterV;
+  const areaTopoAjustada = areaTopo + Math.max(0, (alturaUtil - alturaBlocoGrade) / 2);
+  return { gutterV, areaTopo: areaTopoAjustada };
+}
+
+// Desenha a foto (redonda, anel dourado) + nome do vendedor no canvas do
+// PNG, do lado esquerdo do cabeçalho do molde.
+function desenharCabecalhoVendedorCanvas(ctx, imagemVendedor, nomeVendedor) {
+  const diam = VENDEDOR_FOTO_DIAMETRO;
+  const x = TEMPLATE_AREA.esq + VENDEDOR_INDENT;
+  const yCentro = VENDEDOR_FOTO_Y_CENTRO;
+  const y = yCentro - diam / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x + diam / 2, yCentro, diam / 2, 0, Math.PI * 2);
+  ctx.closePath();
+  if (imagemVendedor) {
+    ctx.clip();
+    desenharImagemPreenchendo(ctx, imagemVendedor, x, y, diam, diam);
+  } else {
+    ctx.fillStyle = "#F4F3EE";
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = "#d4af37";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(x + diam / 2, yCentro, diam / 2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  if (nomeVendedor) {
+    ctx.fillStyle = "#2A2925";
+    ctx.font = "600 15px 'Work Sans', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(nomeVendedor, x + diam + 18, yCentro + 10);
+  }
+}
 
 // Desenha uma grade de cartões de produto sobre o template (usada pelo
 // PNG e, futuramente, pelo PDF): cartão branco com sombra suave, foto
@@ -472,7 +577,7 @@ function desenharGradeDeCartoes(ctx, itens, imagensCarregadas, opcoes) {
 
     // Título + código — calculados de baixo pra cima, colados no preço
     // (o espaço "sobrando" fica entre a foto e o texto, não entre o texto e o preço)
-    ctx.font = "400 9.5px 'Work Sans', sans-serif";
+    ctx.font = "600 11px 'Work Sans', sans-serif";
     const textoCodigos = item.codigo_barras
       ? `Cód. ${item.codigo}  •  Barras ${item.codigo_barras}`
       : `Cód. ${item.codigo}`;
@@ -493,8 +598,8 @@ function desenharGradeDeCartoes(ctx, itens, imagensCarregadas, opcoes) {
     ctx.font = "italic 900 15px 'Montserrat', sans-serif";
     linhasNome.forEach((linha, li) => ctx.fillText(linha, x + padCard, yPrimeiraLinhaNome + li * linhaAlturaNome));
 
-    ctx.fillStyle = "#8A8A8A";
-    ctx.font = "400 9.5px 'Work Sans', sans-serif";
+    ctx.fillStyle = "#1E1E1E";
+    ctx.font = "600 11px 'Work Sans', sans-serif";
     ctx.fillText(linhaCodigos, x + padCard, yCodigo);
 
     ctx.save();
@@ -516,9 +621,9 @@ function desenharGradeDeCartoes(ctx, itens, imagensCarregadas, opcoes) {
     ctx.fillText("unid", xBadge + larguraBadge - 11, yBadge + 16);
 
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = "italic 900 34px 'Montserrat', sans-serif";
+    ctx.font = "italic 900 38px 'Montserrat', sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(precoTexto, x + larguraCard / 2, yBadge + alturaBadge - 10);
+    ctx.fillText(precoTexto, x + larguraCard / 2, yBadge + alturaBadge - 14);
     ctx.textAlign = "left";
   });
 }
@@ -527,9 +632,14 @@ document.getElementById("btn-gerar-png").addEventListener("click", async () => {
   const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
   if (itensMarcados.length === 0) return;
 
-  if (itensMarcados.length > LIMITE_ITENS_PNG) {
+  // Mesma ordenação usada no PDF (categoria e depois descrição, alfabética),
+  // só que aqui numa grade só, sem títulos de categoria.
+  const itensOrdenados = agruparPorCategoriaOrdenado(itensMarcados).flatMap((g) => g.itens);
+
+  const grade = calcularGradePng();
+  if (itensOrdenados.length > grade.limite) {
     alert(
-      `Pra gerar a imagem, marque no máximo ${LIMITE_ITENS_PNG} itens por vez.\n\n` +
+      `Pra gerar a imagem, marque no máximo ${grade.limite} itens por vez.\n\n` +
       `Gera a imagem com esses, desmarca eles e marca os próximos.`
     );
     return;
@@ -539,10 +649,6 @@ document.getElementById("btn-gerar-png").addEventListener("click", async () => {
   botao.disabled = true;
 
   try {
-    // Mesma ordenação usada no PDF (categoria e depois descrição, alfabética),
-    // só que aqui numa grade só, sem títulos de categoria.
-    const itensOrdenados = agruparPorCategoriaOrdenado(itensMarcados).flatMap((g) => g.itens);
-
     const dataUrlsPorCodigo = new Map();
     await Promise.all(
       itensOrdenados
@@ -563,67 +669,59 @@ document.getElementById("btn-gerar-png").addEventListener("click", async () => {
 
     const imagemTemplate = await carregarTemplateDaArea(AREA_VENDEDOR);
 
+    const fotoVendedorDataUrl = VENDEDOR_FOTO_URL
+      ? await carregarImagemComoDataUrl(VENDEDOR_FOTO_URL)
+      : null;
+    const imagemVendedor = fotoVendedorDataUrl
+      ? await carregarImageElement(fotoVendedorDataUrl)
+      : null;
+
     if (document.fonts && document.fonts.ready) {
       try { await document.fonts.ready; } catch (erroFontes) { /* segue com a fonte padrão */ }
     }
 
-    // Grade de 4 colunas x 3 linhas = 12 cartões, dentro do espaço em
-    // branco da imagem-modelo (entre a moldura decorada e o rodapé). Uma
-    // linha de texto com o vendedor + período fica logo abaixo do topo da
-    // área branca, e a grade começa abaixo dessa linha.
-    const larguraCanvas = TEMPLATE_LARGURA;
-    const alturaCanvas = TEMPLATE_ALTURA;
-    const colunas = 4;
-    const linhasGrade = 3;
-    const gutterH = 30;
-    const gutterV = 22;
-    const areaEsq = TEMPLATE_AREA.esq;
+    const {
+      colunas, gutterH, gutterV, padCard, areaEsq, areaTopo, alturaUtil,
+      larguraCard, alturaCard, larguraFoto, alturaImagem,
+    } = grade;
     const areaDir = TEMPLATE_AREA.dir;
-    const areaBase = TEMPLATE_AREA.base;
     const yLinhaVendedor = TEMPLATE_TEXTO_TOPO;
-    const areaTopo = TEMPLATE_GRADE_TOPO;
-
-    const larguraUtil = areaDir - areaEsq;
-    const alturaUtil = areaBase - areaTopo;
-    const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
-    const alturaCard = (alturaUtil - gutterV * (linhasGrade - 1)) / linhasGrade;
-    const padCard = 10;
-    const larguraFoto = larguraCard - padCard * 2;
-    const alturaImagem = larguraFoto; // foto quadrada
 
     const canvas = document.createElement("canvas");
-    canvas.width = larguraCanvas;
-    canvas.height = alturaCanvas;
+    canvas.width = TEMPLATE_LARGURA * PNG_ESCALA;
+    canvas.height = TEMPLATE_ALTURA * PNG_ESCALA;
     const ctx = canvas.getContext("2d");
+    ctx.scale(PNG_ESCALA, PNG_ESCALA);
 
     // Fundo: a imagem-modelo (ou um fundo branco liso, se ela não carregar)
     if (imagemTemplate) {
-      ctx.drawImage(imagemTemplate, 0, 0, larguraCanvas, alturaCanvas);
+      ctx.drawImage(imagemTemplate, 0, 0, TEMPLATE_LARGURA, TEMPLATE_ALTURA);
     } else {
       ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, larguraCanvas, alturaCanvas);
+      ctx.fillRect(0, 0, TEMPLATE_LARGURA, TEMPLATE_ALTURA);
     }
 
-    // Vendedor (esquerda) e período (direita) — aproveitando o espaço
-    // livre dos dois lados do logo, que fica desimpedido bem mais cedo
-    // que o centro (onde ainda está o desenho "Ofertas da Semana")
+    // Vendedor (foto + nome, à esquerda) e período (à direita)
     const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
     const textoSemana = (document.getElementById("texto-semana").textContent || "").trim();
-    ctx.fillStyle = "#2A2925";
-    ctx.font = "600 15px 'Work Sans', sans-serif";
-    if (nomeVendedor) {
-      ctx.textAlign = "left";
-      ctx.fillText(nomeVendedor, areaEsq + TEMPLATE_TEXTO_INDENT, yLinhaVendedor);
-    }
+    desenharCabecalhoVendedorCanvas(ctx, imagemVendedor, nomeVendedor);
     if (textoSemana) {
+      ctx.fillStyle = "#2A2925";
+      ctx.font = "600 15px 'Work Sans', sans-serif";
       ctx.textAlign = "right";
       ctx.fillText(textoSemana, areaDir - TEMPLATE_TEXTO_INDENT, yLinhaVendedor);
+      ctx.textAlign = "left";
     }
-    ctx.textAlign = "left";
+
+    const { gutterV: gutterVAjustado, areaTopo: areaTopoAjustada } = ajustarEspacamentoGradePng(
+      { colunas, gutterV, alturaCard, areaTopo, alturaUtil },
+      itensOrdenados.length
+    );
 
     desenharGradeDeCartoes(ctx, itensOrdenados, imagensCarregadas, {
-      colunas, areaEsq, areaTopo, larguraCard, alturaCard, gutterH, gutterV,
-      padCard, larguraFoto, alturaImagem, comSombra: true,
+      colunas, areaEsq, areaTopo: areaTopoAjustada, larguraCard, alturaCard,
+      gutterH, gutterV: gutterVAjustado, padCard, larguraFoto, alturaImagem,
+      comSombra: true,
     });
 
     const dataArquivo = new Date().toISOString().slice(0, 10);
@@ -649,13 +747,17 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
   botao.textContent = "Gerando…";
 
   try {
-    const grupos = agruparPorCategoriaOrdenado(itensMarcados);
+    // Mesma ordenação usada na Imagem (categoria e depois descrição,
+    // alfabética), numa grade só, contínua, sem títulos de categoria
+    // (igual ao Impala — o pedido dentro de cada categoria continua
+    // agrupado, só não aparece mais o nome da categoria como título).
+    const itensOrdenados = agruparPorCategoriaOrdenado(itensMarcados).flatMap((g) => g.itens);
 
     // Carrega as fotos dos itens que tiverem, em paralelo, antes de montar
     // o PDF (os itens sem foto salva simplesmente não mostram imagem).
     const dataUrlsPorCodigo = new Map();
     await Promise.all(
-      itensMarcados
+      itensOrdenados
         .filter((i) => i.foto_url)
         .map(async (i) => {
           const dataUrl = await carregarImagemComoDataUrl(i.foto_url);
@@ -670,7 +772,7 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
       })
     );
 
-    // Imagem-modelo (mesma do PNG, já escolhida pela área do vendedor) —
+    // Imagem-modelo (mesma da Imagem, já escolhida pela área do vendedor) —
     // convertida pra data URL, porque o jsPDF precisa de base64/URL pra
     // inserir a imagem, não do elemento <img>.
     const imagemTemplateEl = await carregarTemplateDaArea(AREA_VENDEDOR);
@@ -683,20 +785,42 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
       templateDataUrl = canvasTemplate.toDataURL("image/jpeg", 0.92);
     }
 
+    // Foto do vendedor + moldura dourada, prontas como uma imagem circular
+    // só (recortada aqui, porque o jsPDF não recorta imagem sozinho).
+    let fotoVendedorDataUrl = null;
+    if (VENDEDOR_FOTO_URL) {
+      const fotoVendedorUrlData = await carregarImagemComoDataUrl(VENDEDOR_FOTO_URL);
+      const imagemVendedorEl = fotoVendedorUrlData ? await carregarImageElement(fotoVendedorUrlData) : null;
+      if (imagemVendedorEl) {
+        const diamPx = 240;
+        const canvasFotoVendedor = document.createElement("canvas");
+        canvasFotoVendedor.width = diamPx;
+        canvasFotoVendedor.height = diamPx;
+        const ctxFotoVendedor = canvasFotoVendedor.getContext("2d");
+        ctxFotoVendedor.save();
+        ctxFotoVendedor.beginPath();
+        ctxFotoVendedor.arc(diamPx / 2, diamPx / 2, diamPx / 2, 0, Math.PI * 2);
+        ctxFotoVendedor.closePath();
+        ctxFotoVendedor.clip();
+        desenharImagemPreenchendo(ctxFotoVendedor, imagemVendedorEl, 0, 0, diamPx, diamPx);
+        ctxFotoVendedor.restore();
+        fotoVendedorDataUrl = canvasFotoVendedor.toDataURL("image/png");
+      }
+    }
+
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     const larguraPagina = 210;
     const alturaPagina = 297;
 
-    // Área "segura" da imagem-modelo (as mesmas medidas usadas no PNG),
+    // Área "segura" da imagem-modelo (as mesmas medidas usadas na Imagem),
     // convertida de pixels pra milímetros.
     const escalaX = larguraPagina / TEMPLATE_LARGURA;
     const escalaY = alturaPagina / TEMPLATE_ALTURA;
     const areaEsq = TEMPLATE_AREA.esq * escalaX;
     const areaDir = TEMPLATE_AREA.dir * escalaX;
+    const areaTopo = TEMPLATE_AREA.topo * escalaY;
     const areaBase = TEMPLATE_AREA.base * escalaY;
-    const yTexto = TEMPLATE_TEXTO_TOPO * escalaY;
-    const areaTopo = TEMPLATE_GRADE_TOPO * escalaY;
     const indentTexto = TEMPLATE_TEXTO_INDENT * escalaX;
     const margemX = areaEsq;
     const larguraUtil = areaDir - areaEsq;
@@ -709,17 +833,33 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
       }
     }
 
-    desenharFundo();
-
-    // Vendedor (esquerda) e período (direita) — só na primeira página
-    // (decisão do Leonardo: num PDF fica melhor assim).
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(42, 41, 37);
+    // Vendedor (foto + nome, esquerda) e período (direita) — desenhado só
+    // na primeira página (decisão do Leonardo: num PDF fica melhor assim,
+    // diferente da Imagem, que é uma folha única).
+    const diamVendedorMm = VENDEDOR_FOTO_DIAMETRO * escalaX;
+    const xFotoVendedor = (TEMPLATE_AREA.esq + VENDEDOR_INDENT) * escalaX;
+    const yCentroVendedorMm = VENDEDOR_FOTO_Y_CENTRO * escalaY;
+    const yFotoVendedor = yCentroVendedorMm - diamVendedorMm / 2;
     const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
     const textoSemana = (document.getElementById("texto-semana").textContent || "").trim();
-    if (nomeVendedor) doc.text(nomeVendedor, margemX + indentTexto, yTexto);
-    if (textoSemana) doc.text(textoSemana, areaDir - indentTexto, yTexto, { align: "right" });
+
+    function desenharCabecalhoVendedor() {
+      if (fotoVendedorDataUrl) {
+        doc.addImage(fotoVendedorDataUrl, "PNG", xFotoVendedor, yFotoVendedor, diamVendedorMm, diamVendedorMm);
+      }
+      doc.setDrawColor(212, 175, 55);
+      doc.setLineWidth(0.6);
+      doc.circle(xFotoVendedor + diamVendedorMm / 2, yCentroVendedorMm, diamVendedorMm / 2, "S");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(42, 41, 37);
+      if (nomeVendedor) doc.text(nomeVendedor, xFotoVendedor + diamVendedorMm + 4, yCentroVendedorMm + 1.6);
+      if (textoSemana) doc.text(textoSemana, areaDir - indentTexto, yCentroVendedorMm + 1.6, { align: "right" });
+    }
+
+    desenharFundo();
+    desenharCabecalhoVendedor();
 
     let y = areaTopo;
 
@@ -729,129 +869,123 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
     const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
     const padCard = 2.2;
     const larguraFoto = larguraCard - padCard * 2;
-    const alturaFoto = larguraFoto; // foto quadrada, igual à do PNG
+    // Foto um pouco mais baixa que larga (em vez de quadrada) — mesma
+    // regra da Imagem, é o que abre espaço pra 4ª fileira (16 itens por
+    // página em vez de 12).
+    const alturaFoto = larguraFoto * PDF_FATOR_ALTURA_FOTO;
     const alturaBadge = 9.6;
     const alturaTextos = 12.5; // nome (até 2 linhas) + código, entre a foto e a etiqueta
     const alturaCard = padCard + alturaFoto + alturaTextos + alturaBadge + padCard;
 
-    // Recorta cada foto (sem esticar) num quadrado pronto, na resolução
-    // final aproximada — mesma lógica de corte usada no PNG
-    // (desenharImagemPreenchendo), só que desenhando num canvas à parte
-    // em vez de direto no PDF (o jsPDF não recorta imagem sozinho).
-    const ladoFotoPx = Math.round(larguraFoto * (300 / 25.4)); // ~300dpi
+    // Recorta cada foto (sem esticar) já no formato final (largura x
+    // altura, não mais um quadrado) — mesma lógica de corte usada na
+    // Imagem (desenharImagemPreenchendo), só que desenhando num canvas à
+    // parte em vez de direto no PDF (o jsPDF não recorta imagem sozinho).
+    const larguraFotoPx = Math.round(larguraFoto * (300 / 25.4)); // ~300dpi
+    const alturaFotoPx = Math.round(alturaFoto * (300 / 25.4));
     const fotosRecortadas = new Map();
     imagensCarregadas.forEach((img, codigo) => {
       const canvasFoto = document.createElement("canvas");
-      canvasFoto.width = ladoFotoPx;
-      canvasFoto.height = ladoFotoPx;
-      desenharImagemPreenchendo(canvasFoto.getContext("2d"), img, 0, 0, ladoFotoPx, ladoFotoPx);
+      canvasFoto.width = larguraFotoPx;
+      canvasFoto.height = alturaFotoPx;
+      desenharImagemPreenchendo(canvasFoto.getContext("2d"), img, 0, 0, larguraFotoPx, alturaFotoPx);
       fotosRecortadas.set(codigo, canvasFoto.toDataURL("image/jpeg", 0.9));
     });
 
-    grupos.forEach((grupo) => {
-      if (y + 6 + alturaCard > areaBase) { doc.addPage(); desenharFundo(); y = areaTopo + 6; }
+    // Grade contínua, sem separar por categoria — igual já é feito na
+    // Imagem (o pedido dentro de cada categoria continua agrupado, só não
+    // aparece mais o nome da categoria como título entre os grupos).
+    let coluna = 0;
+    itensOrdenados.forEach((item) => {
+      if (coluna === 0 && y + alturaCard > areaBase) {
+        doc.addPage();
+        desenharFundo();
+        y = areaTopo;
+      }
+
+      const x = margemX + coluna * (larguraCard + gutterH);
+
+      // Cartão branco com borda leve (sem sombra — o jsPDF não faz blur)
+      doc.setDrawColor(225, 224, 218);
+      doc.setFillColor(255, 255, 255);
+      doc.setLineWidth(0.2);
+      doc.roundedRect(x, y, larguraCard, alturaCard, 1.8, 1.8, "FD");
+
+      // Foto (recorte já pronto, sem esticar) ou fundo neutro
+      const fotoDataUrl = fotosRecortadas.get(item.codigo);
+      if (fotoDataUrl) {
+        try {
+          doc.addImage(fotoDataUrl, "JPEG", x + padCard, y + padCard, larguraFoto, alturaFoto);
+        } catch (erro) {
+          console.error("[Ofertas da Semana] Erro ao inserir imagem no PDF:", erro);
+        }
+      } else {
+        doc.setFillColor(244, 243, 238);
+        doc.rect(x + padCard, y + padCard, larguraFoto, alturaFoto, "F");
+      }
+
+      // Preço — etiqueta preta ancorada no rodapé do cartão (não se
+      // move de acordo com o tamanho do nome do produto). O "R$" já
+      // aparece separado, então usa só o número aqui.
+      const precoTexto = formatarPrecoSemPrefixo(item.preco);
+      const larguraBadge = larguraFoto;
+      const xBadge = x + padCard;
+      const yBadge = y + alturaCard - padCard - alturaBadge;
+
+      // Nome + código, calculados de baixo pra cima, colados na etiqueta
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.2);
+      const textoCodigos = item.codigo_barras
+        ? `Cód. ${item.codigo}  •  Barras ${item.codigo_barras}`
+        : `Cód. ${item.codigo}`;
+      const linhaCodigos = doc.splitTextToSize(textoCodigos, larguraFoto)[0];
 
       doc.setFont("helvetica", "bolditalic");
-      doc.setFontSize(11);
-      doc.setTextColor(150, 106, 18);
-      doc.text(grupo.categoria.toUpperCase(), margemX, y);
-      y += 5.5;
+      doc.setFontSize(8.3);
+      const todasLinhasNome = doc.splitTextToSize(item.descricao, larguraFoto);
+      const linhasNome = todasLinhasNome.slice(0, 2);
+      if (todasLinhasNome.length > 2 && linhasNome[1].length > 1) {
+        linhasNome[1] = linhasNome[1].slice(0, -1) + "…";
+      }
 
-      let coluna = 0;
-      grupo.itens.forEach((item) => {
-        if (coluna === 0 && y + alturaCard > areaBase) {
-          doc.addPage();
-          desenharFundo();
-          y = areaTopo + 6;
-        }
+      const gapCodigoBadge = 2.6;
+      const gapNomeCodigo = 3.4;
+      const linhaAlturaNome = 3.4;
 
-        const x = margemX + coluna * (larguraCard + gutterH);
+      const yCodigo = yBadge - gapCodigoBadge;
+      const yUltimaLinhaNome = yCodigo - gapNomeCodigo;
+      const yPrimeiraLinhaNome = yUltimaLinhaNome - (linhasNome.length - 1) * linhaAlturaNome;
 
-        // Cartão branco com borda leve (sem sombra — o jsPDF não faz blur)
-        doc.setDrawColor(225, 224, 218);
-        doc.setFillColor(255, 255, 255);
-        doc.setLineWidth(0.2);
-        doc.roundedRect(x, y, larguraCard, alturaCard, 1.8, 1.8, "FD");
+      doc.setTextColor(30, 30, 30);
+      doc.setFont("helvetica", "bolditalic");
+      doc.setFontSize(8.3);
+      linhasNome.forEach((linha, li) => doc.text(linha, x + padCard, yPrimeiraLinhaNome + li * linhaAlturaNome));
 
-        // Foto (recorte quadrado já pronto, sem esticar) ou fundo neutro
-        const fotoDataUrl = fotosRecortadas.get(item.codigo);
-        if (fotoDataUrl) {
-          try {
-            doc.addImage(fotoDataUrl, "JPEG", x + padCard, y + padCard, larguraFoto, alturaFoto);
-          } catch (erro) {
-            console.error("[Ofertas da Semana] Erro ao inserir imagem no PDF:", erro);
-          }
-        } else {
-          doc.setFillColor(244, 243, 238);
-          doc.rect(x + padCard, y + padCard, larguraFoto, alturaFoto, "F");
-        }
+      doc.setTextColor(30, 30, 30);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.2);
+      doc.text(linhaCodigos, x + padCard, yCodigo);
 
-        // Preço — etiqueta preta ancorada no rodapé do cartão (não se
-        // move de acordo com o tamanho do nome do produto). O "R$" já
-        // aparece separado, então usa só o número aqui.
-        const precoTexto = formatarPrecoSemPrefixo(item.preco);
-        const larguraBadge = larguraFoto;
-        const xBadge = x + padCard;
-        const yBadge = y + alturaCard - padCard - alturaBadge;
+      doc.setFillColor(22, 21, 19);
+      doc.roundedRect(xBadge, yBadge, larguraBadge, alturaBadge, 1.6, 1.6, "F");
 
-        // Nome + código, calculados de baixo pra cima, colados na etiqueta
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(6.2);
-        const textoCodigos = item.codigo_barras
-          ? `Cód. ${item.codigo}  •  Barras ${item.codigo_barras}`
-          : `Cód. ${item.codigo}`;
-        const linhaCodigos = doc.splitTextToSize(textoCodigos, larguraFoto)[0];
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.6);
+      doc.setTextColor(255, 255, 255);
+      doc.text("R$", xBadge + 2, yBadge + 3.4);
+      doc.setTextColor(216, 214, 207);
+      doc.text("unid", xBadge + larguraBadge - 2, yBadge + 3.4, { align: "right" });
 
-        doc.setFont("helvetica", "bolditalic");
-        doc.setFontSize(8.3);
-        const todasLinhasNome = doc.splitTextToSize(item.descricao, larguraFoto);
-        const linhasNome = todasLinhasNome.slice(0, 2);
-        if (todasLinhasNome.length > 2 && linhasNome[1].length > 1) {
-          linhasNome[1] = linhasNome[1].slice(0, -1) + "…";
-        }
+      doc.setFont("helvetica", "bolditalic");
+      doc.setFontSize(15);
+      doc.setTextColor(255, 255, 255);
+      doc.text(precoTexto, x + larguraCard / 2, yBadge + alturaBadge - 3, { align: "center" });
 
-        const gapCodigoBadge = 2.6;
-        const gapNomeCodigo = 3.4;
-        const linhaAlturaNome = 3.4;
-
-        const yCodigo = yBadge - gapCodigoBadge;
-        const yUltimaLinhaNome = yCodigo - gapNomeCodigo;
-        const yPrimeiraLinhaNome = yUltimaLinhaNome - (linhasNome.length - 1) * linhaAlturaNome;
-
-        doc.setTextColor(30, 30, 30);
-        doc.setFont("helvetica", "bolditalic");
-        doc.setFontSize(8.3);
-        linhasNome.forEach((linha, li) => doc.text(linha, x + padCard, yPrimeiraLinhaNome + li * linhaAlturaNome));
-
-        doc.setTextColor(130, 130, 130);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(6.2);
-        doc.text(linhaCodigos, x + padCard, yCodigo);
-
-        doc.setFillColor(22, 21, 19);
-        doc.roundedRect(xBadge, yBadge, larguraBadge, alturaBadge, 1.6, 1.6, "F");
-
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(6.6);
-        doc.setTextColor(255, 255, 255);
-        doc.text("R$", xBadge + 2, yBadge + 3.4);
-        doc.setTextColor(216, 214, 207);
-        doc.text("unid", xBadge + larguraBadge - 2, yBadge + 3.4, { align: "right" });
-
-        doc.setFont("helvetica", "bolditalic");
-        doc.setFontSize(13.5);
-        doc.setTextColor(255, 255, 255);
-        doc.text(precoTexto, x + larguraCard / 2, yBadge + alturaBadge - 2, { align: "center" });
-
-        coluna++;
-        if (coluna === colunas) {
-          coluna = 0;
-          y += alturaCard + gutterV;
-        }
-      });
-
-      if (coluna !== 0) y += alturaCard + gutterV;
-      y += 3;
+      coluna++;
+      if (coluna === colunas) {
+        coluna = 0;
+        y += alturaCard + gutterV;
+      }
     });
 
     const dataArquivo = new Date().toISOString().slice(0, 10);
@@ -929,6 +1063,7 @@ async function iniciar() {
 
   VENDEDOR_WHATSAPP = vendedor.whatsapp;
   AREA_VENDEDOR = vendedor.area || "SC";
+  VENDEDOR_FOTO_URL = vendedor.foto_url || null;
   document.getElementById("nome-vendedor").textContent = vendedor.nome;
 
   const fotoEl = document.getElementById("foto-vendedor");
