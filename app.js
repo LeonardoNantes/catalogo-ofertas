@@ -439,10 +439,11 @@ const GRADE_LINHA_ALTURA_NOME = 18;
 const GRADE_MAX_LINHAS_NOME = 2;
 const GRADE_ALTURA_BADGE = 52;
 const GRADE_FATOR_ALTURA_FOTO = 0.93;
-// Mesma ideia, só que pro PDF (milímetros, fontes proporcionalmente um
-// pouco maiores) — precisa encolher um pouco mais a foto pra caber as
-// mesmas 4 fileiras (16 itens) por página.
-const PDF_FATOR_ALTURA_FOTO = 0.84;
+// Mesma ideia, só que pro PDF (milímetros) — bem perto da proporção da
+// Imagem (0.93), ajustada pra caber as mesmas 4 fileiras (16 itens) por
+// página depois de igualar o espaço entre fileiras à mesma proporção da
+// Imagem (ver gutterV mais abaixo, na função do PDF).
+const PDF_FATOR_ALTURA_FOTO = 0.911;
 // A Imagem (PNG) é desenhada numa resolução 2x maior que o tamanho final
 // do molde (reduzida de volta ao exportar), só pra o texto ficar nítido —
 // o PDF é vetorial (sempre nítido), a Imagem é raster e precisa de mais
@@ -580,13 +581,13 @@ function desenharGradeDeCartoes(ctx, itens, imagensCarregadas, opcoes) {
 
     // Título + código — calculados de baixo pra cima, colados no preço
     // (o espaço "sobrando" fica entre a foto e o texto, não entre o texto e o preço)
-    ctx.font = "600 11px 'Work Sans', sans-serif";
+    ctx.font = "600 17.1px 'Work Sans', sans-serif";
     const textoCodigos = item.codigo_barras
       ? `Cód. ${item.codigo}  •  Barras ${item.codigo_barras}`
       : `Cód. ${item.codigo}`;
     const linhaCodigos = quebrarTextoCanvas(ctx, textoCodigos, larguraFoto, 1)[0];
 
-    ctx.font = "italic 900 15px 'Montserrat', sans-serif";
+    ctx.font = "italic 900 19.7px 'Montserrat', sans-serif";
     const linhasNome = quebrarTextoCanvas(ctx, item.descricao, larguraFoto, 2);
 
     const gapCodigoBadge = 14;
@@ -598,11 +599,11 @@ function desenharGradeDeCartoes(ctx, itens, imagensCarregadas, opcoes) {
     const yPrimeiraLinhaNome = yUltimaLinhaNome - (linhasNome.length - 1) * linhaAlturaNome;
 
     ctx.fillStyle = "#1E1E1E";
-    ctx.font = "italic 900 15px 'Montserrat', sans-serif";
+    ctx.font = "italic 900 19.7px 'Montserrat', sans-serif";
     linhasNome.forEach((linha, li) => ctx.fillText(linha, x + padCard, yPrimeiraLinhaNome + li * linhaAlturaNome));
 
     ctx.fillStyle = "#1E1E1E";
-    ctx.font = "600 11px 'Work Sans', sans-serif";
+    ctx.font = "600 17.1px 'Work Sans', sans-serif";
     ctx.fillText(linhaCodigos, x + padCard, yCodigo);
 
     ctx.save();
@@ -616,7 +617,7 @@ function desenharGradeDeCartoes(ctx, itens, imagensCarregadas, opcoes) {
     ctx.restore();
 
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = "700 10px 'Work Sans', sans-serif";
+    ctx.font = "700 15.7px 'Work Sans', sans-serif";
     ctx.textAlign = "left";
     ctx.fillText("R$", xBadge + 11, yBadge + 16);
     ctx.textAlign = "right";
@@ -624,7 +625,7 @@ function desenharGradeDeCartoes(ctx, itens, imagensCarregadas, opcoes) {
     ctx.fillText("unid", xBadge + larguraBadge - 11, yBadge + 16);
 
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = "italic 900 38px 'Montserrat', sans-serif";
+    ctx.font = "italic 900 35.6px 'Montserrat', sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(precoTexto, x + larguraCard / 2, yBadge + alturaBadge - 14);
     ctx.textAlign = "left";
@@ -868,7 +869,7 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
 
     const colunas = 4;
     const gutterH = 4;
-    const gutterV = 7;
+    const gutterV = 3.3;
     const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
     const padCard = 2.2;
     const larguraFoto = larguraCard - padCard * 2;
