@@ -583,8 +583,8 @@ function desenharGradeDeCartoes(ctx, itens, imagensCarregadas, opcoes) {
     // (o espaço "sobrando" fica entre a foto e o texto, não entre o texto e o preço)
     ctx.font = "600 17.1px 'Work Sans', sans-serif";
     const textoCodigos = item.codigo_barras
-      ? `Cód. ${item.codigo}  •  Barras ${item.codigo_barras}`
-      : `Cód. ${item.codigo}`;
+      ? `${item.codigo}  •  Barras ${item.codigo_barras}`
+      : `${item.codigo}`;
     const linhaCodigos = quebrarTextoCanvas(ctx, textoCodigos, larguraFoto, 1)[0];
 
     ctx.font = "italic 900 19.7px 'Montserrat', sans-serif";
@@ -940,8 +940,8 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7.2);
       const textoCodigos = item.codigo_barras
-        ? `Cód. ${item.codigo}  •  Barras ${item.codigo_barras}`
-        : `Cód. ${item.codigo}`;
+        ? `${item.codigo}  •  Barras ${item.codigo_barras}`
+        : `${item.codigo}`;
       const linhaCodigos = doc.splitTextToSize(textoCodigos, larguraFoto)[0];
 
       doc.setFont("helvetica", "bolditalic");
