@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ofertas da Semana</title>
+<meta property="og:type" content="website" />
+<meta property="og:title" content="__OG_TITLE__" />
+<meta property="og:description" content="Facilite suas compras com o Catálogo Ofertas da Semana!" />
+<meta property="og:image" content="https://catalogo-ofertas-ecru.vercel.app/assets/og-capa-ofertas-semana.jpg" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="__OG_TITLE__" />
+<meta name="twitter:description" content="Facilite suas compras com o Catálogo Ofertas da Semana!" />
+<meta name="twitter:image" content="https://catalogo-ofertas-ecru.vercel.app/assets/og-capa-ofertas-semana.jpg" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Work+Sans:wght@400;500;600&family=Montserrat:ital,wght@1,900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div id="tela-carregando" class="tela-estado">
+    <div class="spinner"></div>
+  </div>
+
+  <div id="tela-erro" class="tela-estado" hidden>
+    <h1>Link não encontrado</h1>
+    <p>Esse link de Ofertas da Semana não é válido. Confira com quem te passou o link.</p>
+  </div>
+
+  <div id="tela-pausado" class="tela-estado" hidden>
+    <h1>Catálogo pausado</h1>
+    <p>Esse catálogo está temporariamente indisponível.</p>
+    <a id="btn-pausado-whatsapp" class="botao-principal" target="_blank" rel="noopener">Falar no WhatsApp</a>
+  </div>
+
+  <div id="tela-vazio" class="tela-estado" hidden>
+    <h1>Sem ofertas no momento</h1>
+    <p>Ainda não tem nenhuma oferta publicada por aqui. Volta em breve!</p>
+  </div>
+
+  <div id="app" hidden>
+    <div class="topo-fixo">
+      <header class="cabecalho">
+        <div class="linha-vendedor">
+          <div id="foto-vendedor" class="foto-vendedor"></div>
+          <div class="dados-vendedor">
+            <div id="nome-vendedor" class="nome-vendedor"></div>
+            <div class="frase-vendedor">O seu vendedor!</div>
+          </div>
+          <button id="btn-gerar-png" class="botao-pdf" type="button" disabled aria-label="Gerar imagem" title="Gerar imagem (PNG)">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0E6B54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg>
+          </button>
+          <button id="btn-gerar-pdf" class="botao-pdf" type="button" disabled aria-label="Gerar PDF" title="Gerar PDF">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0E6B54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="13" y2="17"></line></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="banner-semana">
+        <span class="banner-titulo">Ofertas da Semana</span>
+        <span id="texto-semana" class="banner-datas"></span>
+      </div>
+
+      <nav id="categoria-tabs" class="categoria-tabs"></nav>
+    </div>
+
+    <main id="lista-itens" class="lista-itens"></main>
+
+    <div class="rodape">
+      <button id="btn-pdf-pedido" class="botao-pre-pedido" type="button" disabled aria-label="Gerar PDF do pré-pedido" title="Gerar PDF do pré-pedido">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0E6B54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="13" y2="17"></line></svg>
+      </button>
+      <button id="btn-enviar-interesse" class="botao-principal" disabled>Marque os itens de interesse</button>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
