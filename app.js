@@ -167,6 +167,17 @@ function toggleInteresse(codigo) {
   atualizarRodape();
 }
 
+// Desliza a barra de abas sozinha pra deixar a aba escolhida no meio da
+// tela — assim as próximas categorias aparecem sem precisar arrastar.
+function centralizarAbaAtiva(nav) {
+  const ativa = nav.querySelector(".categoria-tab.ativa");
+  if (!ativa) return;
+  const caixaNav = nav.getBoundingClientRect();
+  const caixaAba = ativa.getBoundingClientRect();
+  const alvo = nav.scrollLeft + (caixaAba.left - caixaNav.left) - (nav.clientWidth - caixaAba.width) / 2;
+  nav.scrollTo({ left: Math.max(0, alvo), behavior: "smooth" });
+}
+
 function renderizarAbas() {
   // Mostra aba pra qualquer categoria que tiver item de verdade — não só
   // as 10 fixas de CATEGORIAS_INFO — pra categoria nova criada no Painel
@@ -179,9 +190,14 @@ function renderizarAbas() {
   const abas = [{ key: "todos", label: "Todos" }, ...categoriasPresentes.map((c) => ({ key: c, label: c }))];
 
   const nav = document.getElementById("categoria-tabs");
+  // Guarda onde a barra estava antes de redesenhar (redesenhar zera a
+  // rolagem) pra o deslize até a aba nova começar do lugar certo.
+  const rolagemAnterior = nav.scrollLeft;
   nav.innerHTML = abas
     .map((a) => `<button type="button" class="categoria-tab${a.key === CATEGORIA_ATIVA ? " ativa" : ""}" data-key="${escapeAttr(a.key)}">${escapeHtml(a.label)}</button>`)
     .join("");
+  nav.scrollLeft = rolagemAnterior;
+  centralizarAbaAtiva(nav);
   nav.querySelectorAll(".categoria-tab").forEach((btn) => {
     btn.addEventListener("click", () => {
       CATEGORIA_ATIVA = btn.dataset.key;
