@@ -254,6 +254,76 @@ button { font-family: inherit; cursor: pointer; }
 .botao-pre-pedido:disabled { border-color: rgba(31,30,29,0.12); cursor: default; }
 .botao-pre-pedido:disabled svg { stroke: #B7B5AC; }
 
+.botao-limpar {
+  flex-shrink: 0;
+  width: 54px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(185,28,28,0.3);
+  background: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.1s;
+}
+.botao-limpar:active { transform: scale(0.95); }
+.botao-limpar:disabled { border-color: rgba(31,30,29,0.12); cursor: default; }
+.botao-limpar:disabled svg { stroke: #B7B5AC; }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20,19,17,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1000;
+}
+.modal-caixa {
+  background: #FFFFFF;
+  border-radius: 16px;
+  padding: 22px 20px;
+  max-width: 340px;
+  width: 100%;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+}
+.modal-titulo {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1F1E1D;
+  line-height: 1.35;
+}
+.modal-texto {
+  font-size: 13.5px;
+  color: #5E5D59;
+  margin-top: 8px;
+  line-height: 1.4;
+}
+.modal-botoes {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.modal-btn {
+  flex: 1;
+  padding: 12px 10px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+}
+.modal-btn-principal {
+  background: linear-gradient(135deg, #0E6B54, #0B5744);
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(14,107,84,0.25);
+}
+.modal-btn-secundario {
+  background: #F0EEE6;
+  color: #4A4944;
+}
+
 .botao-pdf {
   width: 40px; height: 40px;
   border-radius: 50%;

@@ -150,33 +150,141 @@ let VENDEDOR_WHATSAPP = null;
 let AREA_VENDEDOR = "SC";
 let VENDEDOR_FOTO_URL = null;
 
-function inc(codigo) {
-  QTY.set(codigo, (QTY.get(codigo) || 0) + 1);
-  renderizarItens();
-  atualizarRodape();
+// ---------------- CARRINHO GUARDADO NO CELULAR (localStorage) ----------------
+// Pra não perder os itens marcados quando o cliente atualiza a página ou
+// sai pra atender uma ligação e volta. Guardado separado por vendedor
+// (chave com o slug do link), só código + quantidade — o preço sempre vem
+// fresco do banco. Não expira. Mesmo mecanismo já aprovado no catálogo
+// Material Escolar, adaptado pra esse (sem caixa/fração/numeração aqui).
+let CHAVE_GUARDADOS = null;
+let ENVIADO_EM = null; // hora (Date.now()) do último "Enviar interesse", ou null
+let PERGUNTA_ENVIO_ABERTA = false;
+
+function salvarItensMarcados() {
+  if (!CHAVE_GUARDADOS) return;
+  try {
+    const itens = {};
+    QTY.forEach((qtd, codigo) => {
+      if (qtd > 0) itens[codigo] = qtd;
+    });
+    if (Object.keys(itens).length === 0) {
+      localStorage.removeItem(CHAVE_GUARDADOS);
+    } else {
+      localStorage.setItem(CHAVE_GUARDADOS, JSON.stringify({ itens, enviadoEm: ENVIADO_EM }));
+    }
+  } catch (erro) {
+    // Modo privado, sem espaço, etc. — o catálogo continua funcionando
+    // normal, só não guarda nada entre uma visita e outra.
+  }
 }
-function dec(codigo) {
-  QTY.set(codigo, Math.max(0, (QTY.get(codigo) || 0) - 1));
-  renderizarItens();
-  atualizarRodape();
+
+function carregarItensMarcados() {
+  if (!CHAVE_GUARDADOS) return;
+  try {
+    const salvo = JSON.parse(localStorage.getItem(CHAVE_GUARDADOS) || "null");
+    if (!salvo || !salvo.itens) return;
+
+    const codigosNoCatalogo = new Set(TODOS_ITENS.map((i) => String(i.codigo)));
+    Object.entries(salvo.itens).forEach(([codigo, qtd]) => {
+      if (codigosNoCatalogo.has(codigo) && qtd > 0) QTY.set(codigo, qtd);
+    });
+    ENVIADO_EM = salvo.enviadoEm || null;
+
+    // Regrava já sem os itens que saíram do catálogo (limpeza silenciosa).
+    salvarItensMarcados();
+  } catch (erro) {
+    // Guardado corrompido ou inacessível — ignora e segue com carrinho vazio.
+  }
 }
-function toggleInteresse(codigo) {
-  const atual = QTY.get(codigo) || 0;
-  QTY.set(codigo, atual > 0 ? 0 : 1);
+
+// Agrupa tudo que precisa acontecer sempre que o cliente mexe num item:
+// salva no celular, atualiza a tela, e cancela a pergunta de "já enviou?"
+// (se ele voltou a mexer, é porque ainda está montando o pedido).
+function aposMudarItens() {
+  ENVIADO_EM = null;
+  salvarItensMarcados();
   renderizarItens();
   atualizarRodape();
 }
 
-// Desliza a barra de abas sozinha pra deixar a aba escolhida no meio da
-// tela — assim as próximas categorias aparecem sem precisar arrastar.
-function centralizarAbaAtiva(nav) {
-  const ativa = nav.querySelector(".categoria-tab.ativa");
-  if (!ativa) return;
-  const caixaNav = nav.getBoundingClientRect();
-  const caixaAba = ativa.getBoundingClientRect();
-  const alvo = nav.scrollLeft + (caixaAba.left - caixaNav.left) - (nav.clientWidth - caixaAba.width) / 2;
-  nav.scrollTo({ left: Math.max(0, alvo), behavior: "smooth" });
+function inc(codigo) {
+  QTY.set(codigo, (QTY.get(codigo) || 0) + 1);
+  aposMudarItens();
 }
+function dec(codigo) {
+  QTY.set(codigo, Math.max(0, (QTY.get(codigo) || 0) - 1));
+  aposMudarItens();
+}
+function toggleInteresse(codigo) {
+  const atual = QTY.get(codigo) || 0;
+  QTY.set(codigo, atual > 0 ? 0 : 1);
+  aposMudarItens();
+}
+
+// ---------------- CAIXINHA DE CONFIRMAÇÃO (própria da página) ----------------
+// Usada tanto pra "você já enviou esses itens?" quanto pra confirmação da
+// lixeira — nunca o confirm() feio do navegador.
+function perguntar({ titulo, texto, simTexto, naoTexto }) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById("modal-confirmacao");
+    document.getElementById("modal-titulo").textContent = titulo;
+    const textoEl = document.getElementById("modal-texto");
+    textoEl.textContent = texto || "";
+    textoEl.hidden = !texto;
+
+    const btnSim = document.getElementById("modal-btn-sim");
+    const btnNao = document.getElementById("modal-btn-nao");
+    btnSim.textContent = simTexto;
+    btnNao.textContent = naoTexto;
+
+    function fechar(resultado) {
+      overlay.hidden = true;
+      btnSim.onclick = null;
+      btnNao.onclick = null;
+      resolve(resultado);
+    }
+    btnSim.onclick = () => fechar(true);
+    btnNao.onclick = () => fechar(false);
+    overlay.hidden = false;
+  });
+}
+
+// Confere se precisa perguntar "você já enviou esses itens pelo WhatsApp?"
+// — só pergunta se tiver mandado há pelo menos 4s (pra não disparar na
+// hora que o próprio clique em "Enviar interesse" acontece) e só se ainda
+// tiver item marcado. Chamada tanto ao reabrir/recarregar a página quanto
+// ao voltar pra aba depois de ter ido pro WhatsApp.
+function verificarPerguntaEnvio() {
+  if (!ENVIADO_EM || PERGUNTA_ENVIO_ABERTA) return;
+  if (Date.now() - ENVIADO_EM < 4000) return;
+  const totalItens = Array.from(QTY.values()).filter((q) => q > 0).length;
+  if (totalItens === 0) return;
+  perguntarSeJaEnviou();
+}
+
+async function perguntarSeJaEnviou() {
+  PERGUNTA_ENVIO_ABERTA = true;
+  const confirmou = await perguntar({
+    titulo: "Você já enviou esses itens pelo WhatsApp?",
+    texto: "Quer limpar a seleção pra começar de novo?",
+    simTexto: "Sim, limpar",
+    naoTexto: "Não, manter",
+  });
+  PERGUNTA_ENVIO_ABERTA = false;
+
+  if (confirmou) QTY.clear();
+  // Nas duas respostas, já perguntou — não pergunta de novo até o cliente
+  // mandar outra vez pelo WhatsApp.
+  ENVIADO_EM = null;
+  salvarItensMarcados();
+  renderizarItens();
+  atualizarRodape();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") verificarPerguntaEnvio();
+});
+window.addEventListener("pageshow", () => verificarPerguntaEnvio());
 
 function renderizarAbas() {
   // Mostra aba pra qualquer categoria que tiver item de verdade — não só
@@ -190,14 +298,9 @@ function renderizarAbas() {
   const abas = [{ key: "todos", label: "Todos" }, ...categoriasPresentes.map((c) => ({ key: c, label: c }))];
 
   const nav = document.getElementById("categoria-tabs");
-  // Guarda onde a barra estava antes de redesenhar (redesenhar zera a
-  // rolagem) pra o deslize até a aba nova começar do lugar certo.
-  const rolagemAnterior = nav.scrollLeft;
   nav.innerHTML = abas
     .map((a) => `<button type="button" class="categoria-tab${a.key === CATEGORIA_ATIVA ? " ativa" : ""}" data-key="${escapeAttr(a.key)}">${escapeHtml(a.label)}</button>`)
     .join("");
-  nav.scrollLeft = rolagemAnterior;
-  centralizarAbaAtiva(nav);
   nav.querySelectorAll(".categoria-tab").forEach((btn) => {
     btn.addEventListener("click", () => {
       CATEGORIA_ATIVA = btn.dataset.key;
@@ -266,6 +369,7 @@ function atualizarRodape() {
   const btnPdf = document.getElementById("btn-gerar-pdf");
   const btnPng = document.getElementById("btn-gerar-png");
   const btnPdfPedido = document.getElementById("btn-pdf-pedido");
+  const btnLimpar = document.getElementById("btn-limpar-itens");
   const totalItens = Array.from(QTY.values()).filter((q) => q > 0).length;
   if (totalItens > 0) {
     btn.textContent = `Enviar interesse (${totalItens} ${totalItens === 1 ? "item" : "itens"})`;
@@ -273,12 +377,14 @@ function atualizarRodape() {
     btnPdf.disabled = false;
     btnPng.disabled = false;
     btnPdfPedido.disabled = false;
+    btnLimpar.disabled = false;
   } else {
     btn.textContent = "Marque os itens de interesse";
     btn.disabled = true;
     btnPdf.disabled = true;
     btnPng.disabled = true;
     btnPdfPedido.disabled = true;
+    btnLimpar.disabled = true;
   }
 }
 
@@ -1048,6 +1154,27 @@ document.getElementById("btn-enviar-interesse").addEventListener("click", () => 
 
   const url = `https://wa.me/${VENDEDOR_WHATSAPP}?text=${encodeURIComponent(mensagem)}`;
   window.open(url, "_blank");
+
+  // Guarda a hora do envio — ao voltar pra essa página (ou reabrir o link
+  // mais tarde), isso é o que dispara a pergunta "já enviou esses itens?".
+  ENVIADO_EM = Date.now();
+  salvarItensMarcados();
+});
+
+// Lixeira do rodapé — desmarca tudo de uma vez, com confirmação.
+document.getElementById("btn-limpar-itens").addEventListener("click", async () => {
+  const totalItens = Array.from(QTY.values()).filter((q) => q > 0).length;
+  if (totalItens === 0) return;
+
+  const confirmou = await perguntar({
+    titulo: `Desmarcar todos os ${totalItens} ${totalItens === 1 ? "item marcado" : "itens marcados"}?`,
+    simTexto: "Sim, desmarcar",
+    naoTexto: "Cancelar",
+  });
+  if (confirmou) {
+    QTY.clear();
+    aposMudarItens();
+  }
 });
 
 // "Gerar PDF do pré-pedido" — cópia simples (só texto, sem molde/fotos) dos
@@ -1164,6 +1291,8 @@ async function iniciar() {
     return;
   }
 
+  CHAVE_GUARDADOS = `ofertas-itens-marcados:${slug}`;
+
   registrarVisita(slug);
 
   let vendedor;
@@ -1218,10 +1347,14 @@ async function iniciar() {
   document.getElementById("texto-semana").textContent =
     `Ofertas de ${formatarDataCurta(oferta.semanaInicio)} a ${formatarDataCurta(oferta.semanaFim)}`;
 
+  carregarItensMarcados();
+
   renderizarAbas();
   renderizarItens();
   atualizarRodape();
   mostrarEstado("app");
+
+  verificarPerguntaEnvio();
 }
 
 function iniciaisDoNome(nome) {
