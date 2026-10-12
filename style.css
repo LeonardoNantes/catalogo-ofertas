@@ -103,7 +103,7 @@ button { font-family: inherit; cursor: pointer; }
   text-transform: uppercase;
 }
 .banner-datas {
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 600;
   opacity: 0.92;
   white-space: nowrap;
@@ -175,6 +175,7 @@ button { font-family: inherit; cursor: pointer; }
   flex-shrink: 0;
   box-shadow: 0 1px 4px rgba(32,31,28,0.10), inset 0 0 0 1px rgba(32,31,28,0.04);
 }
+.item-icone.tem-foto { cursor: zoom-in; }
 .item-corpo { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .item-descricao { font-size: 14px; font-weight: 600; line-height: 1.35; }
 .item-codigos { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #5E5D59; flex-wrap: nowrap; overflow: hidden; }
@@ -342,4 +343,54 @@ button { font-family: inherit; cursor: pointer; }
 
 @media (max-width: 380px) {
   .item-card { flex-wrap: wrap; }
+}
+
+/* ---------- ORDENAR POR PREÇO (na barra verde, só na aba aberta) ---------- */
+.ordem-preco {
+  appearance: none; -webkit-appearance: none;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #0E6B54;
+  background: #FFFFFF url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%230E6B54' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 6px center;
+  border: none;
+  border-radius: 999px;
+  padding: 4px 18px 4px 8px;
+  flex-shrink: 0;
+  max-width: 34%;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+}
+.ordem-preco.ativa { background-color: #F6B21B; color: #1F1E1D; }
+
+/* ---------- FOTO AMPLIADA (toque na foto do produto) ---------- */
+.foto-zoom-fundo {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(20,20,30,0.55);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.foto-zoom-fundo[hidden] { display: none; }
+.foto-zoom-caixa {
+  position: relative;
+  background: #FFFFFF;
+  border-radius: 18px;
+  padding: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+}
+.foto-zoom-img {
+  display: block;
+  width: 180px; height: 180px;   /* 3x a foto do cartão (60px) */
+  max-width: calc(100vw - 68px); max-height: calc(100vw - 68px);
+  object-fit: contain;
+  border-radius: 12px;
+}
+.foto-zoom-fechar {
+  position: absolute; top: -12px; right: -12px;
+  width: 32px; height: 32px;
+  border: none; border-radius: 50%;
+  background: #1F1E1D; color: #FFFFFF;
+  font-size: 20px; line-height: 32px; text-align: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }

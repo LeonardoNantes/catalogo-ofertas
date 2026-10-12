@@ -146,6 +146,7 @@ function formatarPrecoSemPrefixo(valor) {
 const QTY = new Map(); // codigo -> quantidade
 let TODOS_ITENS = [];
 let CATEGORIA_ATIVA = "todos";
+let ORDEM_PRECO = ""; // "" = padrão, "menor" ou "maior" — só vale pra aba aberta
 let VENDEDOR_WHATSAPP = null;
 let AREA_VENDEDOR = "SC";
 let VENDEDOR_FOTO_URL = null;
@@ -304,6 +305,8 @@ function renderizarAbas() {
   nav.querySelectorAll(".categoria-tab").forEach((btn) => {
     btn.addEventListener("click", () => {
       CATEGORIA_ATIVA = btn.dataset.key;
+      // A ordem por preço vale só pra aba que está aberta: trocou de aba, volta ao padrão.
+      ORDEM_PRECO = "";
       renderizarAbas();
       renderizarItens();
       // Ao trocar de aba, volta a rolagem pro início — senão a lista nova
@@ -319,6 +322,14 @@ function renderizarItens() {
     .filter((i) => CATEGORIA_ATIVA === "todos" || i.categoria === CATEGORIA_ATIVA)
     .sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR"));
 
+  // Ordenar por preço — só dentro da aba aberta, não mexe na ordem padrão de verdade.
+  if (ORDEM_PRECO) {
+    itensFiltrados.sort((a, b) => (ORDEM_PRECO === "menor" ? 1 : -1) * ((Number(a.preco) || 0) - (Number(b.preco) || 0)));
+  }
+  const seletorOrdem = document.getElementById("ordem-preco");
+  seletorOrdem.value = ORDEM_PRECO;
+  seletorOrdem.classList.toggle("ativa", !!ORDEM_PRECO);
+
   if (itensFiltrados.length === 0) {
     lista.innerHTML = '<p class="sem-itens">Nenhum item nessa categoria.</p>';
     return;
@@ -331,7 +342,7 @@ function renderizarItens() {
       const interessado = qty > 0;
       return `
         <div class="item-card" style="background: ${info.bg};">
-          <div class="item-icone"${item.foto_url ? ` style="background-image:url('${escapeAttr(item.foto_url)}')"` : ""}>${item.foto_url ? "" : iconeCategoria(item.categoria, info.fg)}</div>
+          <div class="item-icone${item.foto_url ? " tem-foto" : ""}"${item.foto_url ? ` style="background-image:url('${escapeAttr(item.foto_url)}')" data-foto="${escapeAttr(item.foto_url)}"` : ""}>${item.foto_url ? "" : iconeCategoria(item.categoria, info.fg)}</div>
           <div class="item-corpo">
             <div class="item-descricao">${escapeHtml(item.descricao)}</div>
             <div class="item-codigos">
@@ -363,6 +374,33 @@ function renderizarItens() {
     btn.addEventListener("click", () => toggleInteresse(btn.dataset.codigo));
   });
 }
+
+document.getElementById("ordem-preco").addEventListener("change", (e) => {
+  ORDEM_PRECO = e.target.value;
+  renderizarItens();
+  window.scrollTo({ top: 0, behavior: "instant" });
+});
+
+// ---------------- FOTO AMPLIADA (toque na foto do produto) ----------------
+function abrirFotoAmpliada(url) {
+  const img = document.getElementById("foto-zoom-img");
+  img.src = url;
+  document.getElementById("foto-zoom-fundo").hidden = false;
+}
+function fecharFotoAmpliada() {
+  document.getElementById("foto-zoom-fundo").hidden = true;
+  document.getElementById("foto-zoom-img").removeAttribute("src");
+}
+document.getElementById("lista-itens").addEventListener("click", (e) => {
+  const foto = e.target.closest(".item-icone.tem-foto");
+  if (foto) abrirFotoAmpliada(foto.dataset.foto);
+});
+document.getElementById("foto-zoom-fundo").addEventListener("click", (e) => {
+  if (e.target.id === "foto-zoom-fundo" || e.target.id === "foto-zoom-fechar") fecharFotoAmpliada();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !document.getElementById("foto-zoom-fundo").hidden) fecharFotoAmpliada();
+});
 
 function atualizarRodape() {
   const btn = document.getElementById("btn-enviar-interesse");
@@ -829,7 +867,10 @@ document.getElementById("btn-gerar-png").addEventListener("click", async () => {
 
     // Vendedor (foto + nome, à esquerda) e período (à direita)
     const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
-    const textoSemana = (document.getElementById("texto-semana").textContent || "").trim();
+    // No PDF/Imagem usa sempre o texto completo ("Ofertas de DD/MM a DD/MM"),
+    // mesmo que na tela o rótulo tenha ficado mais curto pra caber no celular.
+    const elTextoSemana = document.getElementById("texto-semana");
+    const textoSemana = (elTextoSemana.dataset.completo || elTextoSemana.textContent || "").trim();
     desenharCabecalhoVendedorCanvas(ctx, imagemVendedor, nomeVendedor);
     if (textoSemana) {
       ctx.fillStyle = "#2A2925";
@@ -967,7 +1008,10 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
     const yCentroVendedorMm = VENDEDOR_FOTO_Y_CENTRO * escalaY;
     const yFotoVendedor = yCentroVendedorMm - diamVendedorMm / 2;
     const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
-    const textoSemana = (document.getElementById("texto-semana").textContent || "").trim();
+    // No PDF/Imagem usa sempre o texto completo ("Ofertas de DD/MM a DD/MM"),
+    // mesmo que na tela o rótulo tenha ficado mais curto pra caber no celular.
+    const elTextoSemana = document.getElementById("texto-semana");
+    const textoSemana = (elTextoSemana.dataset.completo || elTextoSemana.textContent || "").trim();
 
     function desenharCabecalhoVendedor() {
       if (fotoVendedorDataUrl) {
@@ -1198,7 +1242,10 @@ document.getElementById("btn-pdf-pedido").addEventListener("click", () => {
     const grupos = agruparPorCategoriaOrdenado(itensMarcados);
 
     const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
-    const textoSemana = (document.getElementById("texto-semana").textContent || "").trim();
+    // No PDF/Imagem usa sempre o texto completo ("Ofertas de DD/MM a DD/MM"),
+    // mesmo que na tela o rótulo tenha ficado mais curto pra caber no celular.
+    const elTextoSemana = document.getElementById("texto-semana");
+    const textoSemana = (elTextoSemana.dataset.completo || elTextoSemana.textContent || "").trim();
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -1349,8 +1396,15 @@ async function iniciar() {
   }
 
   TODOS_ITENS = oferta.itens;
-  document.getElementById("texto-semana").textContent =
-    `Ofertas de ${formatarDataCurta(oferta.semanaInicio)} a ${formatarDataCurta(oferta.semanaFim)}`;
+  {
+    // Na tela mostra só os dias, pra caber bem na barra em celulares pequenos.
+    // No PDF/Imagem gerados continua saindo o texto completo de sempre.
+    const dataInicio = formatarDataCurta(oferta.semanaInicio);
+    const dataFim = formatarDataCurta(oferta.semanaFim);
+    const elTextoSemana = document.getElementById("texto-semana");
+    elTextoSemana.textContent = `${dataInicio} a ${dataFim}`;
+    elTextoSemana.dataset.completo = `Ofertas de ${dataInicio} a ${dataFim}`;
+  }
 
   carregarItensMarcados();
 

@@ -58,6 +58,11 @@
 
       <div class="banner-semana">
         <span class="banner-titulo">Ofertas da Semana</span>
+        <select id="ordem-preco" class="ordem-preco" aria-label="Ordenar por preço">
+          <option value="">Preço ↕</option>
+          <option value="menor">↓ Menor</option>
+          <option value="maior">↑ Maior</option>
+        </select>
         <span id="texto-semana" class="banner-datas"></span>
       </div>
 
@@ -74,6 +79,13 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0E6B54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="13" y2="17"></line></svg>
       </button>
       <button id="btn-enviar-interesse" class="botao-principal" disabled>Marque os itens de interesse</button>
+    </div>
+  </div>
+
+  <div id="foto-zoom-fundo" class="foto-zoom-fundo" hidden>
+    <div class="foto-zoom-caixa" role="dialog" aria-modal="true" aria-label="Foto do produto">
+      <img id="foto-zoom-img" class="foto-zoom-img" alt="" />
+      <button id="foto-zoom-fechar" type="button" class="foto-zoom-fechar" aria-label="Fechar foto">×</button>
     </div>
   </div>
 
