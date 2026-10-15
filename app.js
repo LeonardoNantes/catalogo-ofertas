@@ -80,6 +80,27 @@ async function buscarVendedor(slug) {
   return data;
 }
 
+// A API do Supabase nunca devolve mais que 1000 linhas numa consulta só,
+// mesmo sem pedir — acima disso, o resto some em silêncio, sem erro nenhum.
+// Essa função busca em "páginas" de 1000 até não sobrar mais nada, pra uma
+// semana com mais de 1000 itens (como já aconteceu) vir completa.
+async function buscarTudoPaginado(montarConsulta) {
+  const TAMANHO_PAGINA = 1000;
+  let todasLinhas = [];
+  let pagina = 0;
+  while (true) {
+    const inicio = pagina * TAMANHO_PAGINA;
+    const fim = inicio + TAMANHO_PAGINA - 1;
+    const { data, error } = await montarConsulta().range(inicio, fim);
+    if (error) throw error;
+    const linhas = data || [];
+    todasLinhas = todasLinhas.concat(linhas);
+    if (linhas.length < TAMANHO_PAGINA) break;
+    pagina++;
+  }
+  return todasLinhas;
+}
+
 // Pega a semana mais recente já publicada pra essa área, e todos os itens
 // dela (o "Complemento" pode ter somado itens ao longo da semana — aqui
 // pega tudo que estiver publicado nessa semana_inicio).
@@ -94,15 +115,16 @@ async function buscarOfertaAtual(area) {
   if (!semanas || semanas.length === 0) return { itens: [], semanaInicio: null, semanaFim: null };
 
   const { semana_inicio, semana_fim } = semanas[0];
-  const { data: itens, error: erroItens } = await getClient()
-    .from("ofertas_semana")
-    .select("codigo, codigo_barras, descricao, categoria, preco, ordem")
-    .eq("area", area)
-    .eq("semana_inicio", semana_inicio)
-    .order("ordem", { ascending: true });
-  if (erroItens) throw erroItens;
+  const itens = await buscarTudoPaginado(() =>
+    getClient()
+      .from("ofertas_semana")
+      .select("codigo, codigo_barras, descricao, categoria, preco, ordem")
+      .eq("area", area)
+      .eq("semana_inicio", semana_inicio)
+      .order("ordem", { ascending: true })
+  );
 
-  const itensComFoto = await anexarFotosDosProdutos(itens || []);
+  const itensComFoto = await anexarFotosDosProdutos(itens);
 
   return { itens: itensComFoto, semanaInicio: semana_inicio, semanaFim: semana_fim };
 }
@@ -113,12 +135,10 @@ async function anexarFotosDosProdutos(itens) {
   if (itens.length === 0) return itens;
   try {
     const codigos = itens.map((i) => i.codigo);
-    const { data, error } = await getClient()
-      .from("ofertas_fotos")
-      .select("codigo, foto_url")
-      .in("codigo", codigos);
-    if (error) throw error;
-    const fotoPorCodigo = new Map((data || []).map((f) => [f.codigo, f.foto_url]));
+    const data = await buscarTudoPaginado(() =>
+      getClient().from("ofertas_fotos").select("codigo, foto_url").in("codigo", codigos)
+    );
+    const fotoPorCodigo = new Map(data.map((f) => [f.codigo, f.foto_url]));
     return itens.map((item) => ({ ...item, foto_url: fotoPorCodigo.get(item.codigo) || null }));
   } catch (erro) {
     console.error("[Ofertas da Semana] Não consegui buscar as fotos dos produtos:", erro);
