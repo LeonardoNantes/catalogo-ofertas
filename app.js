@@ -80,32 +80,6 @@ async function buscarVendedor(slug) {
   return data;
 }
 
-// O Supabase só devolve até 1000 linhas por consulta, não importa o que a
-// gente peça — acima disso, ele simplesmente corta o resto sem avisar (não
-// dá erro nenhum). Uma área com muitos itens numa semana só (ex: mais de
-// 1000 somando todas as categorias) ia perder silenciosamente os itens
-// "excedentes" — foi o que aconteceu em 15/10/2026 com a área SC (1199
-// itens na semana: tudo que passava dos 1000 primeiros, incluindo a
-// categoria inteira "Danilla Foods", sumia do catálogo do cliente sem
-// nenhum aviso). Essa função busca em "lotes" de 1000 até não vir mais
-// nada, juntando tudo — assim nenhum item fica de fora, não importa quantos
-// a área tenha.
-async function buscarTodasLinhas(montarConsulta) {
-  const TAMANHO_LOTE = 1000;
-  let todasLinhas = [];
-  let pagina = 0;
-  while (true) {
-    const inicio = pagina * TAMANHO_LOTE;
-    const fim = inicio + TAMANHO_LOTE - 1;
-    const { data, error } = await montarConsulta().range(inicio, fim);
-    if (error) throw error;
-    todasLinhas = todasLinhas.concat(data || []);
-    if (!data || data.length < TAMANHO_LOTE) break;
-    pagina += 1;
-  }
-  return todasLinhas;
-}
-
 // Pega a semana mais recente já publicada pra essa área, e todos os itens
 // dela (o "Complemento" pode ter somado itens ao longo da semana — aqui
 // pega tudo que estiver publicado nessa semana_inicio).
@@ -120,14 +94,13 @@ async function buscarOfertaAtual(area) {
   if (!semanas || semanas.length === 0) return { itens: [], semanaInicio: null, semanaFim: null };
 
   const { semana_inicio, semana_fim } = semanas[0];
-  const itens = await buscarTodasLinhas(() =>
-    getClient()
-      .from("ofertas_semana")
-      .select("codigo, codigo_barras, descricao, categoria, preco, ordem")
-      .eq("area", area)
-      .eq("semana_inicio", semana_inicio)
-      .order("ordem", { ascending: true })
-  );
+  const { data: itens, error: erroItens } = await getClient()
+    .from("ofertas_semana")
+    .select("codigo, codigo_barras, descricao, categoria, preco, ordem")
+    .eq("area", area)
+    .eq("semana_inicio", semana_inicio)
+    .order("ordem", { ascending: true });
+  if (erroItens) throw erroItens;
 
   const itensComFoto = await anexarFotosDosProdutos(itens || []);
 
@@ -136,24 +109,15 @@ async function buscarOfertaAtual(area) {
 
 // Produtos que já tiverem foto cadastrada (banco de fotos, por código
 // Martins) mostram a foto de verdade no lugar do ícone da categoria.
-// Com muitos itens (área grande, ex: mais de 1000 na semana), a lista de
-// códigos é dividida em grupos menores antes de perguntar ao banco — evita
-// tanto uma pergunta longa demais quanto o limite de 1000 linhas por
-// resposta (ver buscarTodasLinhas).
 async function anexarFotosDosProdutos(itens) {
   if (itens.length === 0) return itens;
   try {
-    const TAMANHO_GRUPO = 300;
     const codigos = itens.map((i) => i.codigo);
-    let fotos = [];
-    for (let i = 0; i < codigos.length; i += TAMANHO_GRUPO) {
-      const grupo = codigos.slice(i, i + TAMANHO_GRUPO);
-      const linhas = await buscarTodasLinhas(() =>
-        getClient().from("ofertas_fotos").select("codigo, foto_url").in("codigo", grupo)
-      );
-      fotos = fotos.concat(linhas);
-    }
-    const data = fotos;
+    const { data, error } = await getClient()
+      .from("ofertas_fotos")
+      .select("codigo, foto_url")
+      .in("codigo", codigos);
+    if (error) throw error;
     const fotoPorCodigo = new Map((data || []).map((f) => [f.codigo, f.foto_url]));
     return itens.map((item) => ({ ...item, foto_url: fotoPorCodigo.get(item.codigo) || null }));
   } catch (erro) {
@@ -334,16 +298,35 @@ function centralizarAbaAtiva(nav) {
   nav.scrollTo({ left: Math.max(0, alvo), behavior: "smooth" });
 }
 
+// Ordem fixa de categorias pedida pelo Leonardo — vale só pra Área SC.
+// Categorias fora dessa lista (e qualquer área que não seja SC) continuam
+// em ordem alfabética, depois das que estão aqui.
+const ORDEM_CATEGORIAS_SC = ["Bebidas", "Bomboniere", "Mercearia", "Limpeza", "Higiene", "Perfumaria", "Brinquedos & Bazar", "Material de Construção"];
+function compararCategoriasSC(a, b) {
+  const ia = ORDEM_CATEGORIAS_SC.indexOf(a);
+  const ib = ORDEM_CATEGORIAS_SC.indexOf(b);
+  if (ia !== -1 && ib !== -1) return ia - ib;
+  if (ia !== -1) return -1;
+  if (ib !== -1) return 1;
+  return a.localeCompare(b, "pt-BR");
+}
+
 function renderizarAbas() {
   // Mostra aba pra qualquer categoria que tiver item de verdade — não só
   // as 10 fixas de CATEGORIAS_INFO — pra categoria nova criada no Painel
   // de Preços também aparecer aqui (ela só não tem cor/ícone específicos,
   // usa o visual genérico de "Outros" via infoCategoria/iconeCategoria).
-  // Em ordem alfabética.
+  // Área SC segue a ordem fixa do Leonardo; as outras áreas, ordem alfabética.
   const categoriasPresentes = Array.from(new Set(TODOS_ITENS.map((i) => i.categoria)))
     .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b, "pt-BR"));
-  const abas = [{ key: "todos", label: "Todos" }, ...categoriasPresentes.map((c) => ({ key: c, label: c }))];
+    .sort(AREA_VENDEDOR === "SC" ? compararCategoriasSC : (a, b) => a.localeCompare(b, "pt-BR"));
+  // Na Área SC, "Brinquedos & Bazar" aparece só com o nome "Bazar" (pedido do
+  // Leonardo) — é só o texto da aba; o filtro dos itens continua usando o
+  // nome de categoria de verdade, então nada quebra.
+  const abas = [{ key: "todos", label: "Todos" }, ...categoriasPresentes.map((c) => ({
+    key: c,
+    label: AREA_VENDEDOR === "SC" && c === "Brinquedos & Bazar" ? "Bazar" : c,
+  }))];
 
   const nav = document.getElementById("categoria-tabs");
   // Guarda onde a barra estava antes de redesenhar (redesenhar zera a
