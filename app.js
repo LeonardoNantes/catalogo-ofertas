@@ -322,6 +322,13 @@ function centralizarAbaAtiva(nav) {
 // Categorias fora dessa lista (e qualquer área que não seja SC) continuam
 // em ordem alfabética, depois das que estão aqui.
 const ORDEM_CATEGORIAS_SC = ["Bebidas", "Bomboniere", "Mercearia", "Limpeza", "Higiene", "Perfumaria", "Brinquedos & Bazar", "Material de Construção"];
+// Nome que aparece na aba pra Área SC (texto só — a categoria de verdade,
+// usada pra filtrar os itens, continua a mesma do lado esquerdo).
+const RENOMEAR_ABA_SC = {
+  "Brinquedos & Bazar": "Bazar",
+  "Danilla Foods": "Danilla R$600,00",
+  "GauchaFarma": "Gaucha R$250,00",
+};
 function compararCategoriasSC(a, b) {
   const ia = ORDEM_CATEGORIAS_SC.indexOf(a);
   const ib = ORDEM_CATEGORIAS_SC.indexOf(b);
@@ -340,12 +347,12 @@ function renderizarAbas() {
   const categoriasPresentes = Array.from(new Set(TODOS_ITENS.map((i) => i.categoria)))
     .filter(Boolean)
     .sort(AREA_VENDEDOR === "SC" ? compararCategoriasSC : (a, b) => a.localeCompare(b, "pt-BR"));
-  // Na Área SC, "Brinquedos & Bazar" aparece só com o nome "Bazar" (pedido do
-  // Leonardo) — é só o texto da aba; o filtro dos itens continua usando o
-  // nome de categoria de verdade, então nada quebra.
+  // Na Área SC, algumas categorias aparecem com outro texto na aba (pedido do
+  // Leonardo) — é só o texto; o filtro dos itens continua usando o nome de
+  // categoria de verdade, então nada quebra.
   const abas = [{ key: "todos", label: "Todos" }, ...categoriasPresentes.map((c) => ({
     key: c,
-    label: AREA_VENDEDOR === "SC" && c === "Brinquedos & Bazar" ? "Bazar" : c,
+    label: AREA_VENDEDOR === "SC" && RENOMEAR_ABA_SC[c] ? RENOMEAR_ABA_SC[c] : c,
   }))];
 
   const nav = document.getElementById("categoria-tabs");
