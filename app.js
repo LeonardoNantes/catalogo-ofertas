@@ -328,6 +328,7 @@ const RENOMEAR_ABA_SC = {
   "Brinquedos & Bazar": "Bazar",
   "Danilla Foods": "Danilla R$600,00",
   "GauchaFarma": "Gaucha R$250,00",
+  "Hayamax": "Hayamax R$400,00",
 };
 function compararCategoriasSC(a, b) {
   const ia = ORDEM_CATEGORIAS_SC.indexOf(a);
