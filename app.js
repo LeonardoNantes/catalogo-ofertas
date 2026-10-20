@@ -167,6 +167,7 @@ const QTY = new Map(); // codigo -> quantidade
 let TODOS_ITENS = [];
 let CATEGORIA_ATIVA = "todos";
 let ORDEM_PRECO = ""; // "" = padrão, "menor" ou "maior" — só vale pra aba aberta
+let BUSCA = ""; // texto da busca (lupa) — já normalizado, vazio = sem busca
 let VENDEDOR_WHATSAPP = null;
 let AREA_VENDEDOR = "SC";
 let VENDEDOR_FOTO_URL = null;
@@ -370,6 +371,15 @@ function renderizarAbas() {
       CATEGORIA_ATIVA = btn.dataset.key;
       // A ordem por preço vale só pra aba que está aberta: trocou de aba, volta ao padrão.
       ORDEM_PRECO = "";
+      // Tocar numa aba durante a busca sai da busca e mostra a categoria.
+      if (BUSCA || !document.getElementById("barra-busca").hidden) {
+        const campo = document.getElementById("campo-busca");
+        campo.value = "";
+        BUSCA = "";
+        document.getElementById("barra-busca").hidden = true;
+        document.getElementById("btn-busca").classList.remove("ativo");
+        nav.classList.remove("em-busca");
+      }
       renderizarAbas();
       renderizarItens();
       // Ao trocar de aba, volta a rolagem pro início — senão a lista nova
@@ -379,26 +389,69 @@ function renderizarAbas() {
   });
 }
 
+// ---------------- BUSCA (lupa) ----------------
+// Procura em TODAS as categorias de uma vez, pelo nome, código Martins ou
+// código de barras. Ignora acento e maiúscula/minúscula ("lapis" acha
+// "LÁPIS"). Com várias palavras, o item precisa ter todas (em qualquer
+// ordem): "faber 24" acha "LAPIS COR FABER CASTELL 24 CORES".
+function normalizarBusca(texto) {
+  return String(texto || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .trim();
+}
+
+function itemBateComBusca(item, busca) {
+  const alvo = `${normalizarBusca(item.descricao)} ${item.codigo} ${item.codigo_barras || ""}`;
+  return busca.split(/\s+/).every((palavra) => alvo.includes(palavra));
+}
+
+function abrirBusca() {
+  document.getElementById("barra-busca").hidden = false;
+  document.getElementById("btn-busca").classList.add("ativo");
+  document.getElementById("campo-busca").focus();
+}
+
+function fecharBusca() {
+  const campo = document.getElementById("campo-busca");
+  campo.value = "";
+  campo.blur();
+  BUSCA = "";
+  document.getElementById("barra-busca").hidden = true;
+  document.getElementById("btn-busca").classList.remove("ativo");
+  document.getElementById("categoria-tabs").classList.remove("em-busca");
+  renderizarItens();
+}
+
 function renderizarItens() {
   const lista = document.getElementById("lista-itens");
   const itensFiltrados = TODOS_ITENS
-    .filter((i) => CATEGORIA_ATIVA === "todos" || i.categoria === CATEGORIA_ATIVA)
+    .filter((i) => (BUSCA ? itemBateComBusca(i, BUSCA) : CATEGORIA_ATIVA === "todos" || i.categoria === CATEGORIA_ATIVA))
     .sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR"));
 
-  // Ordenar por preço — só dentro da aba aberta, não mexe na ordem padrão de verdade.
-  if (ORDEM_PRECO) {
+  // Ordenar por preço — só dentro da aba aberta, não mexe na ordem padrão de verdade
+  // (a busca da lupa fica sempre no padrão, igual já acontece no Material Escolar).
+  if (ORDEM_PRECO && !BUSCA) {
     itensFiltrados.sort((a, b) => (ORDEM_PRECO === "menor" ? 1 : -1) * ((Number(a.preco) || 0) - (Number(b.preco) || 0)));
   }
   const seletorOrdem = document.getElementById("ordem-preco");
   seletorOrdem.value = ORDEM_PRECO;
   seletorOrdem.classList.toggle("ativa", !!ORDEM_PRECO);
+  seletorOrdem.hidden = !!BUSCA;
 
   if (itensFiltrados.length === 0) {
-    lista.innerHTML = '<p class="sem-itens">Nenhum item nessa categoria.</p>';
+    lista.innerHTML = BUSCA
+      ? `<p class="sem-itens">Nenhum produto encontrado para "${escapeHtml(document.getElementById("campo-busca").value.trim())}".</p>`
+      : '<p class="sem-itens">Nenhum item nessa categoria.</p>';
     return;
   }
 
-  lista.innerHTML = itensFiltrados
+  const resumoBusca = BUSCA
+    ? `<p class="busca-resumo">${itensFiltrados.length} ${itensFiltrados.length === 1 ? "produto encontrado" : "produtos encontrados"} em todas as categorias</p>`
+    : "";
+
+  lista.innerHTML = resumoBusca + itensFiltrados
     .map((item) => {
       const info = infoCategoria(item.categoria);
       const qty = QTY.get(item.codigo) || 0;
@@ -442,6 +495,22 @@ document.getElementById("ordem-preco").addEventListener("change", (e) => {
   ORDEM_PRECO = e.target.value;
   renderizarItens();
   window.scrollTo({ top: 0, behavior: "instant" });
+});
+
+document.getElementById("btn-busca").addEventListener("click", () => {
+  if (document.getElementById("barra-busca").hidden) abrirBusca();
+  else fecharBusca();
+});
+document.getElementById("btn-fechar-busca").addEventListener("click", fecharBusca);
+document.getElementById("campo-busca").addEventListener("input", (e) => {
+  BUSCA = normalizarBusca(e.target.value);
+  document.getElementById("categoria-tabs").classList.toggle("em-busca", !!BUSCA);
+  renderizarItens();
+  window.scrollTo({ top: 0, behavior: "instant" });
+});
+// "Enter"/"Buscar" do teclado do celular só fecha o teclado (a lista já filtrou).
+document.getElementById("campo-busca").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") e.target.blur();
 });
 
 // ---------------- FOTO AMPLIADA (toque na foto do produto) ----------------
