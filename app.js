@@ -177,6 +177,19 @@ function urlMiniatura(fotoUrl) {
   return fotoUrl.replace(/\.(jpe?g|png)$/i, "-thumb.jpg");
 }
 
+// ---------------- TÍTULO DO PRÉ-PEDIDO (PDF do pré-pedido e mensagem de WhatsApp) ----------------
+// Por padrão, cada um usa seu próprio texto de sempre (recebido como
+// parâmetro `padrao` em cada chamada). Áreas listadas aqui usam, nos dois
+// lugares, esse texto fixo no lugar do padrão — pensado pra ofertas
+// exclusivas de uma área específica (ex: Cernutti), onde o título já deixa
+// claro de quem é aquela oferta.
+const TITULO_PRE_PEDIDO_POR_AREA = {
+  Cernutti: "Pré-pedido — Cernutti - FOB",
+};
+function tituloPrePedido(padrao) {
+  return TITULO_PRE_PEDIDO_POR_AREA[AREA_VENDEDOR] || padrao;
+}
+
 // ---------------- ESTADO DA PÁGINA (interesse / quantidade) ----------------
 const QTY = new Map(); // codigo -> quantidade
 let TODOS_ITENS = [];
@@ -1350,7 +1363,7 @@ document.getElementById("btn-enviar-interesse").addEventListener("click", () => 
   });
 
   const mensagem =
-    `*OFERTAS DA SEMANA*\n` +
+    `*${tituloPrePedido("OFERTAS DA SEMANA")}*\n` +
     `_Olá! tenho interesse nestes itens:_\n\n` +
     blocos.join("\n\n") +
     `\n\n_(Vamos negociar esses itens!)_`;
@@ -1419,7 +1432,7 @@ document.getElementById("btn-pdf-pedido").addEventListener("click", () => {
     doc.setFont("helvetica", "bolditalic");
     doc.setFontSize(18);
     doc.setTextColor(14, 107, 84);
-    doc.text("Pré-pedido — Ofertas da Semana", margemX, y);
+    doc.text(tituloPrePedido("Pré-pedido — Ofertas da Semana"), margemX, y);
     y += 8;
 
     doc.setFont("helvetica", "normal");
