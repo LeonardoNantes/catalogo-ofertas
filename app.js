@@ -184,7 +184,10 @@ function urlMiniatura(fotoUrl) {
 // exclusivas de uma área específica (ex: Cernutti), onde o título já deixa
 // claro de quem é aquela oferta.
 const TITULO_PRE_PEDIDO_POR_AREA = {
-  Cernutti: "Pré-pedido — Cernutti - FOB",
+  // A chave precisa bater exatamente (maiúsculas incluídas) com o valor da
+  // coluna `area` do vendedor no banco — a área real do Leonardo está
+  // cadastrada como "CERNUTTI" (tudo maiúsculo), não "Cernutti".
+  CERNUTTI: "Pré-pedido — Cernutti - FOB",
 };
 function tituloPrePedido(padrao) {
   return TITULO_PRE_PEDIDO_POR_AREA[AREA_VENDEDOR] || padrao;
