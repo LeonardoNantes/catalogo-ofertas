@@ -193,6 +193,37 @@ function tituloPrePedido(padrao) {
   return TITULO_PRE_PEDIDO_POR_AREA[AREA_VENDEDOR] || padrao;
 }
 
+// ---------------- QUANTIDADE DIGITÁVEL POR ÁREA ----------------
+// Por padrão, a quantidade de cada item só muda clicando nos botões − e +
+// (um de cada vez). Áreas listadas aqui também podem digitar o número
+// direto no campo — pensado pra cliente que compra em volume (ex: Cernutti,
+// onde clicar "+" 50 vezes pra comprar 50 caixas de um item não é viável).
+const AREAS_QUANTIDADE_DIGITAVEL = [
+  // Mesmo cuidado de grafia do mapa acima: precisa bater exatamente com o
+  // valor da coluna `area` do vendedor ("CERNUTTI", tudo maiúsculo).
+  "CERNUTTI",
+];
+function areaUsaQuantidadeDigitavel(area) {
+  return AREAS_QUANTIDADE_DIGITAVEL.includes(area);
+}
+// O campo usa type="text" (com inputmode="numeric" pra abrir o teclado
+// numérico no celular) em vez de type="number" de propósito: no Chrome,
+// um campo type="number" não permite selecionar/posicionar o texto por
+// código (selectionStart/select() não funcionam nele), o que quebra o
+// "selecionar tudo ao clicar" mais abaixo. Os caracteres não numéricos são
+// filtrados manualmente (ver listener "input"), então não precisa do
+// type="number" pra isso.
+
+// Define a quantidade de um item pro valor exato digitado (em vez de somar/
+// subtrair 1, como inc()/dec()) — usado pelo campo digitável acima. Texto
+// vazio, "0" ou qualquer coisa não numérica conta como 0 (remove o
+// interesse, igual já acontece ao clicar "−" até chegar em 0).
+function definirQuantidade(codigo, valorDigitado) {
+  const numero = Math.max(0, parseInt(valorDigitado, 10) || 0);
+  QTY.set(codigo, numero);
+  aposMudarItens();
+}
+
 // ---------------- ESTADO DA PÁGINA (interesse / quantidade) ----------------
 const QTY = new Map(); // codigo -> quantidade
 let TODOS_ITENS = [];
@@ -501,7 +532,9 @@ function renderizarItens() {
               ${interessado
                 ? `<div class="item-qty" data-codigo="${escapeAttr(item.codigo)}">
                      <button type="button" class="btn-dec" aria-label="Diminuir quantidade">−</button>
-                     <div class="qty-valor">${qty}</div>
+                     ${areaUsaQuantidadeDigitavel(AREA_VENDEDOR)
+                       ? `<input type="text" inputmode="numeric" pattern="[0-9]*" class="qty-valor qty-valor-input" aria-label="Quantidade" value="${qty}">`
+                       : `<div class="qty-valor">${qty}</div>`}
                      <button type="button" class="btn-inc" aria-label="Aumentar quantidade">+</button>
                    </div>`
                 : `<button type="button" class="item-interesse-pill" data-codigo="${escapeAttr(item.codigo)}">Tenho interesse</button>`}
@@ -516,6 +549,25 @@ function renderizarItens() {
     const codigo = el.dataset.codigo;
     el.querySelector(".btn-dec").addEventListener("click", () => dec(codigo));
     el.querySelector(".btn-inc").addEventListener("click", () => inc(codigo));
+    const campoQtd = el.querySelector(".qty-valor-input");
+    if (campoQtd) {
+      // Enquanto digita, só limpa caractere inválido — não re-renderiza a
+      // cada tecla (isso tiraria o foco do campo no meio da digitação).
+      campoQtd.addEventListener("input", () => {
+        const limpo = campoQtd.value.replace(/[^0-9]/g, "");
+        if (limpo !== campoQtd.value) campoQtd.value = limpo;
+      });
+      // Ao confirmar (saiu do campo ou apertou Enter/OK no teclado), aplica
+      // de vez — mesmo caminho dos botões − e + (salva no celular, atualiza
+      // o rodapé etc.).
+      campoQtd.addEventListener("change", () => definirQuantidade(codigo, campoQtd.value));
+      // Clicar no campo já seleciona o número atual, pra digitar por cima
+      // sem precisar apagar primeiro. O setTimeout(0) é necessário porque,
+      // num clique real, o navegador reposiciona o cursor pela coordenada
+      // do clique IMEDIATAMENTE depois do evento "focus" — sem isso, a
+      // seleção feita aqui seria desfeita um instante depois.
+      campoQtd.addEventListener("focus", () => setTimeout(() => campoQtd.select(), 0));
+    }
   });
   lista.querySelectorAll(".item-interesse-pill").forEach((btn) => {
     btn.addEventListener("click", () => toggleInteresse(btn.dataset.codigo));

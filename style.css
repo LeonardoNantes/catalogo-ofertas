@@ -213,6 +213,22 @@ button { font-family: inherit; cursor: pointer; }
 .item-qty .btn-dec { background: #FFFFFF; color: #201F1C; box-shadow: 0 1px 3px rgba(32,31,28,0.12); }
 .item-qty .btn-inc { background: linear-gradient(135deg, #0E6B54, #0B5744); color: #FFFFFF; box-shadow: 0 2px 6px rgba(14,107,84,0.35); }
 .item-qty .qty-valor { min-width: 14px; text-align: center; font-weight: 700; font-size: 13px; }
+.item-qty .qty-valor-input {
+  min-width: 15px;
+  width: 34px;
+  max-width: 54px;
+  text-align: center;
+  font-family: inherit;
+  color: inherit;
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+}
+.item-qty .qty-valor-input:focus {
+  outline: 2px solid #0E6B54;
+  outline-offset: 1px;
+  border-radius: 4px;
+}
 
 /* ---------- RODAPÉ ---------- */
 .rodape {
