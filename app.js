@@ -162,6 +162,21 @@ function formatarPrecoSemPrefixo(valor) {
   return Number(valor).toFixed(2).replace(".", ",");
 }
 
+// ---------------- MINIATURA DA FOTO (lista de produtos) ----------------
+// A lista de produtos mostra a foto bem pequena (60px), mas a foto
+// original salva é grande (pra não perder qualidade no PDF/Imagem/zoom,
+// que continuam usando a foto original de verdade, sem nenhuma mudança).
+// Uma cópia pequena ("miniatura") de cada foto é gerada à parte e salva
+// no mesmo lugar, só trocando o final do nome do arquivo por "-thumb.jpg"
+// — então dá pra calcular a URL da miniatura sem precisar perguntar nada
+// ao banco. Se a miniatura ainda não existir (foto muito nova, ainda não
+// processada), o navegador cai sozinho pra foto original (ver o
+// "error" tratado depois de desenhar a lista, mais abaixo).
+function urlMiniatura(fotoUrl) {
+  if (!fotoUrl) return fotoUrl;
+  return fotoUrl.replace(/\.(jpe?g|png)$/i, "-thumb.jpg");
+}
+
 // ---------------- ESTADO DA PÁGINA (interesse / quantidade) ----------------
 const QTY = new Map(); // codigo -> quantidade
 let TODOS_ITENS = [];
@@ -458,7 +473,7 @@ function renderizarItens() {
       const interessado = qty > 0;
       return `
         <div class="item-card" style="background: ${info.bg};">
-          <div class="item-icone${item.foto_url ? " tem-foto" : ""}"${item.foto_url ? ` style="background-image:url('${escapeAttr(item.foto_url)}')" data-foto="${escapeAttr(item.foto_url)}"` : ""}>${item.foto_url ? "" : iconeCategoria(item.categoria, info.fg)}</div>
+          <div class="item-icone${item.foto_url ? " tem-foto" : ""}"${item.foto_url ? ` data-foto="${escapeAttr(item.foto_url)}"` : ""}>${item.foto_url ? `<img class="item-foto-miniatura" src="${escapeAttr(urlMiniatura(item.foto_url))}" data-original="${escapeAttr(item.foto_url)}" alt="" loading="lazy">` : iconeCategoria(item.categoria, info.fg)}</div>
           <div class="item-corpo">
             <div class="item-descricao">${escapeHtml(item.descricao)}</div>
             <div class="item-codigos">
@@ -488,6 +503,13 @@ function renderizarItens() {
   });
   lista.querySelectorAll(".item-interesse-pill").forEach((btn) => {
     btn.addEventListener("click", () => toggleInteresse(btn.dataset.codigo));
+  });
+  // Se a miniatura ainda não existir (foto nova, ainda não processada),
+  // cai sozinho pra foto original — nunca fica sem mostrar nada.
+  lista.querySelectorAll(".item-foto-miniatura").forEach((img) => {
+    img.addEventListener("error", () => {
+      if (img.src !== img.dataset.original) img.src = img.dataset.original;
+    }, { once: true });
   });
 }
 
