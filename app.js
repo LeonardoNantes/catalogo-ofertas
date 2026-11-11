@@ -384,7 +384,7 @@ function centralizarAbaAtiva(nav) {
 // Ordem fixa de categorias pedida pelo Leonardo — vale só pra Área SC.
 // Categorias fora dessa lista (e qualquer área que não seja SC) continuam
 // em ordem alfabética, depois das que estão aqui.
-const ORDEM_CATEGORIAS_SC = ["Bebidas", "Bomboniere", "Mercearia", "Limpeza", "Higiene", "Higiene 2", "Perfumaria", "Brinquedos & Bazar", "Brinquedos", "Material de Construção"];
+const ORDEM_CATEGORIAS_SC = ["Black 11/11", "Bebidas", "Bomboniere", "Mercearia", "Limpeza", "Higiene", "Higiene 2", "Perfumaria", "Brinquedos & Bazar", "Brinquedos", "Material de Construção"];
 // Nome que aparece na aba pra Área SC (texto só — a categoria de verdade,
 // usada pra filtrar os itens, continua a mesma do lado esquerdo).
 const RENOMEAR_ABA_SC = {
