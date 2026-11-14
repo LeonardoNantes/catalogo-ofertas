@@ -1855,6 +1855,10 @@ async function iniciar() {
   mostrarEstado("app");
 
   verificarPerguntaEnvio();
+
+  // Tour guiado: tocar na foto do vendedor abre o passo a passo; na 1ª
+  // visita naquele celular aparece a dica "Toque na minha foto...".
+  iniciarTourGuiado();
 }
 
 function iniciaisDoNome(nome) {
@@ -1874,6 +1878,289 @@ function escapeHtml(texto) {
 }
 function escapeAttr(texto) {
   return escapeHtml(texto);
+}
+
+// ============================================================
+// TOUR GUIADO (toque na foto do vendedor)
+// ============================================================
+// O próprio vendedor "explica" o catálogo: a tela escurece, só o item da vez
+// fica aceso, e um balão de fala com a fotinha dele explica pra que serve.
+// Pensado pro cliente final (o link é o mesmo pra cliente e vendedor).
+// - Abre a qualquer momento tocando na foto do vendedor (tem um "?" no canto).
+// - Na 1ª visita naquele celular, aparece só uma dica "Toque na minha foto e
+//   eu te mostro como funciona" — ela some no 1º toque e não volta mais.
+// O tour não mexe no carrinho nem em nada do catálogo: só mostra e explica.
+const CHAVE_DICA_FOTO = "ofertas-dica-foto-vista";
+let TOUR_ATIVO = false;
+let TOUR_PASSO = 0;
+let TOUR_PASSOS = [];
+let DICA_FOTO_ABERTA = false;
+
+function tourLerStorage(chave) { try { return localStorage.getItem(chave); } catch (e) { return null; } }
+function tourGravarStorage(chave, valor) { try { localStorage.setItem(chave, valor); } catch (e) { /* modo privado: segue sem guardar */ } }
+
+function primeiroNomeVendedor() {
+  const nome = document.getElementById("nome-vendedor").textContent || "";
+  return String(nome).trim().split(/\s+/)[0] || "seu vendedor";
+}
+
+// Os 7 passos — textos na voz do vendedor (sem "o"/"a" antes do nome, pra
+// servir pra vendedor e vendedora). No Ofertas: abas Martins/Parceiros +
+// abas de categoria, o card começa com "Tenho interesse", e a barra do
+// carrinho é 1 passo só (não 2) — aprovados pelo Leonardo em 14/11/2026.
+function montarPassosTour() {
+  return [
+    {
+      alvo: () => document.getElementById("vendedor-foto-wrap"), redondo: true,
+      texto: () => `Oi! Eu sou <b>${escaparHtml(primeiroNomeVendedor())}</b> e vou te mostrar rapidinho como fazer seu pedido aqui.`,
+    },
+    {
+      alvo: () => document.getElementById("abas-grupo-tabs"),
+      texto: () => `Aqui você escolhe entre as ofertas do <b>Martins</b> e as dos <b>Parceiros</b>.`,
+    },
+    {
+      alvo: () => document.getElementById("categoria-tabs"),
+      texto: () => `Aqui ficam as <b>categorias</b>. Toque numa aba ou arraste pro lado para ver as outras.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-ordenar"), redondo: true,
+      texto: () => `Aqui você organiza os produtos por <b>menor</b> ou <b>maior preço</b>.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-busca").closest(".acao-cabecalho"),
+      texto: () => `Procurando algo? Toque na <b>lupa</b> e busque pelo nome, pelo código ou pelo código de barras.`,
+    },
+    {
+      alvo: () => document.querySelector("#lista-itens .item-card"),
+      texto: () => `Gostou de algum produto? Toque em <b>Tenho interesse</b> e depois ajuste a quantidade no <b>+</b> e no <b>−</b>. A <b>fração</b> está na descrição do produto. Toque na foto para ver maior.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-ir-carrinho"), botaoCarrinho: true,
+      texto: () => `Aqui você acompanha o que já escolheu, e fica tudo <b>guardado</b> mesmo se fechar a página. Quando terminar, toque aqui para ver seu <b>carrinho</b> e me enviar o pedido.`,
+    },
+  ];
+}
+
+// No Ofertas a foto do vendedor é um quadrinho com a foto de fundo (ou as
+// iniciais, quando ele não tem foto). Copia do cabeçalho pra fotinha do
+// balão e pra do carrinho.
+function copiarFotoVendedor(destino) {
+  const origem = document.getElementById("foto-vendedor");
+  destino.style.backgroundImage = origem.style.backgroundImage;
+  destino.textContent = origem.textContent;
+}
+
+function escaparHtml(texto) {
+  return String(texto).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---------- Dica de 1ª visita ----------
+function posicionarDicaFoto() {
+  const dica = document.getElementById("dica-foto");
+  const r = document.getElementById("vendedor-foto-wrap").getBoundingClientRect();
+  const left = Math.max(10, r.left - 4);
+  dica.style.left = left + "px";
+  dica.style.top = (r.bottom + 12) + "px";
+  dica.style.setProperty("--seta-x", (r.left + r.width / 2 - left) + "px");
+}
+
+function mostrarDicaFoto() {
+  // Não atrapalha se já tem outra coisa na frente (tour, pergunta, foto ampliada)
+  if (TOUR_ATIVO || PERGUNTA_ENVIO_ABERTA || document.getElementById("app").hidden) return;
+  if (!document.getElementById("modal-confirmacao").hidden || !document.getElementById("foto-zoom-fundo").hidden) return;
+  posicionarDicaFoto();
+  document.getElementById("dica-foto").classList.add("visivel");
+  document.getElementById("vendedor-foto-wrap").classList.add("pulsando");
+  DICA_FOTO_ABERTA = true;
+}
+
+function esconderDicaFoto() {
+  if (!DICA_FOTO_ABERTA) return;
+  DICA_FOTO_ABERTA = false;
+  document.getElementById("dica-foto").classList.remove("visivel");
+  document.getElementById("vendedor-foto-wrap").classList.remove("pulsando");
+  tourGravarStorage(CHAVE_DICA_FOTO, "1");
+}
+
+// ---------- Tour ----------
+// Mini tour da tela do carrinho (foto do vendedor ao lado do "Enviar").
+// Decisões do Leonardo em 14/11/2026: sem dica de 1ª visita aqui (o "?" na
+// foto basta). O passo do "Pedido mínimo" só aparece com item de parceiro;
+// o aviso de preço final não ganhou passo (já fica do lado do Enviar).
+function montarPassosTourCarrinho() {
+  return [
+    {
+      alvo: () => document.querySelector("#lista-carrinho .carrinho-item-linha .item-qty"),
+      texto: () => `Aqui você ajusta as <b>quantidades</b>. Se tirar tudo no <b>−</b>, o item sai do pedido.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-limpar-itens"),
+      texto: () => `Quer recomeçar? Aqui você <b>apaga tudo</b> de uma vez.`,
+    },
+    {
+      alvo: () => document.querySelector("#tela-carrinho .carrinho-loja"),
+      texto: () => `Tem mais de uma loja? Escreva aqui <b>para qual loja</b> é o pedido.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-pdf-pedido"),
+      texto: () => `Aqui você baixa seu pedido em <b>PDF</b>, se preferir.`,
+    },
+    {
+      // Só aparece se tiver item de parceiro (com pedido mínimo) no carrinho
+      alvo: () => document.querySelector("#lista-carrinho .grupo-carrinho-minimo"),
+      texto: () => `Os parceiros têm <b>pedido mínimo</b> próprio. Confira o valor de cada um.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-enviar-pedido"),
+      texto: () => `Tudo certo? Toque aqui e seu pedido chega direto no meu <b>WhatsApp</b>.`,
+    },
+  ];
+}
+
+function iniciarTour() {
+  esconderDicaFoto();
+  if (TOUR_ATIVO) return;
+  // Deixa a tela "limpa" antes de começar: sem busca, sem menu, lá no topo
+  if (BUSCA || !document.getElementById("barra-busca").hidden) fecharBusca();
+  document.getElementById("menu-ordenar").hidden = true;
+  window.scrollTo(0, 0);
+  abrirTour(montarPassosTour());
+}
+
+function iniciarTourCarrinho() {
+  if (TOUR_ATIVO) return;
+  window.scrollTo(0, 0);
+  abrirTour(montarPassosTourCarrinho());
+}
+
+function abrirTour(passos) {
+  // Pula passos cujo item não existe na tela (ex: coleção sem produto,
+  // carrinho vazio)
+  TOUR_PASSOS = passos.filter((p) => p.alvo());
+  if (TOUR_PASSOS.length === 0) return;
+
+  TOUR_ATIVO = true;
+  TOUR_PASSO = 0;
+  document.getElementById("tour-nome").textContent = primeiroNomeVendedor();
+  copiarFotoVendedor(document.getElementById("tour-mini-foto"));
+  document.getElementById("tour-bloqueio").hidden = false;
+  document.getElementById("tour-destaque").hidden = false;
+  document.getElementById("tour-balao").hidden = false;
+  mostrarPassoTour();
+}
+
+function encerrarTour() {
+  TOUR_ATIVO = false;
+  document.getElementById("tour-bloqueio").hidden = true;
+  document.getElementById("tour-destaque").hidden = true;
+  document.getElementById("tour-balao").hidden = true;
+  simularBotaoCarrinho(false);
+}
+
+// Nos passos do carrinho, com nada marcado, o botão aparece como
+// "Ir para o carrinho" em vez do cinza "Nenhum item selecionado" (decisão
+// do Leonardo). Ao sair do passo/tour, volta ao normal.
+function simularBotaoCarrinho(ligar) {
+  const btn = document.getElementById("btn-ir-carrinho");
+  if (ligar && btn.disabled) {
+    btn.classList.add("tour-simulado");
+    btn.textContent = "Ir para o carrinho";
+  } else if (!ligar && btn.classList.contains("tour-simulado")) {
+    btn.classList.remove("tour-simulado");
+    atualizarRodape();
+  }
+}
+
+function mostrarPassoTour() {
+  const passo = TOUR_PASSOS[TOUR_PASSO];
+  const ultimo = TOUR_PASSO === TOUR_PASSOS.length - 1;
+  simularBotaoCarrinho(!!passo.botaoCarrinho);
+  document.getElementById("tour-texto").innerHTML = passo.texto();
+  document.getElementById("tour-contador").textContent = `${TOUR_PASSO + 1} de ${TOUR_PASSOS.length}`;
+  document.getElementById("tour-proximo").textContent = ultimo ? "Entendi! 👍" : "Próximo →";
+  document.getElementById("tour-pular").style.visibility = ultimo ? "hidden" : "visible";
+  posicionarPassoTour();
+}
+
+function posicionarPassoTour() {
+  if (!TOUR_ATIVO) return;
+  const passo = TOUR_PASSOS[TOUR_PASSO];
+  const el = passo.alvo();
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const pad = 6;
+
+  // Recorte iluminado em volta do item
+  const destaque = document.getElementById("tour-destaque");
+  let dl, dt, dw, dh;
+  if (passo.redondo) {
+    const lado = Math.max(r.width, r.height) + pad * 2;
+    dl = r.left + r.width / 2 - lado / 2;
+    dt = r.top + r.height / 2 - lado / 2;
+    dw = dh = lado;
+    destaque.style.borderRadius = "50%";
+  } else {
+    dl = r.left - pad;
+    dt = r.top - pad;
+    dw = r.width + pad * 2;
+    dh = r.height + pad * 2;
+    destaque.style.borderRadius = "14px";
+  }
+  Object.assign(destaque.style, { left: dl + "px", top: dt + "px", width: dw + "px", height: dh + "px" });
+
+  // Balão: embaixo do item se couber, senão em cima
+  const balao = document.getElementById("tour-balao");
+  const caixa = document.getElementById("tour-caixa");
+  const largura = Math.min(360, vw - 24);
+  const recuoCaixa = 46 + 8; // fotinha + espaço até o balão de fala
+  balao.style.width = largura + "px";
+  const altura = balao.offsetHeight;
+  const espacoAbaixo = vh - (dt + dh);
+  let top;
+  caixa.classList.remove("seta-cima", "seta-baixo");
+  if (espacoAbaixo > altura + 24) {
+    top = dt + dh + 14;
+    caixa.classList.add("seta-cima");
+  } else {
+    top = Math.max(10, dt - altura - 14);
+    caixa.classList.add("seta-baixo");
+  }
+  const centroX = dl + dw / 2;
+  const larguraCaixa = largura - recuoCaixa;
+  const left = Math.min(Math.max(12, centroX - recuoCaixa - larguraCaixa / 2), vw - largura - 12);
+  balao.style.left = left + "px";
+  balao.style.top = top + "px";
+  caixa.style.setProperty("--seta-x", Math.min(Math.max(18, centroX - left - recuoCaixa), larguraCaixa - 22) + "px");
+}
+
+// Liga tudo — chamado no fim do iniciar(), quando o catálogo já está na tela
+function iniciarTourGuiado() {
+  const ligarFoto = (el, acao) => {
+    el.addEventListener("click", acao);
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); acao(); }
+    });
+  };
+  ligarFoto(document.getElementById("vendedor-foto-wrap"), iniciarTour);
+  ligarFoto(document.getElementById("carrinho-foto-wrap"), iniciarTourCarrinho);
+  // A foto do carrinho é a mesma do cabeçalho (já carregada a esta altura)
+  copiarFotoVendedor(document.getElementById("carrinho-foto"));
+  document.getElementById("tour-pular").addEventListener("click", encerrarTour);
+  document.getElementById("tour-proximo").addEventListener("click", () => {
+    if (TOUR_PASSO >= TOUR_PASSOS.length - 1) { encerrarTour(); return; }
+    TOUR_PASSO++;
+    mostrarPassoTour();
+  });
+  window.addEventListener("resize", () => {
+    posicionarPassoTour();
+    if (DICA_FOTO_ABERTA) posicionarDicaFoto();
+  });
+  // Qualquer toque na tela já some com a dica de 1ª visita
+  document.addEventListener("pointerdown", esconderDicaFoto, true);
+
+  if (!tourLerStorage(CHAVE_DICA_FOTO)) setTimeout(mostrarDicaFoto, 900);
 }
 
 document.addEventListener("DOMContentLoaded", iniciar);

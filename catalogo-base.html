@@ -42,7 +42,12 @@
     <div class="topo-fixo">
       <header class="cabecalho">
         <div class="linha-vendedor">
-          <div id="foto-vendedor" class="foto-vendedor"></div>
+          <!-- Foto do vendedor: tocar nela abre o tour guiado (o "?" no canto
+               avisa que dá pra tocar) -->
+          <div id="vendedor-foto-wrap" class="vendedor-foto-wrap" role="button" tabindex="0" aria-label="Ver como funciona o catálogo">
+            <div id="foto-vendedor" class="foto-vendedor"></div>
+            <span class="foto-ajuda" aria-hidden="true">?</span>
+          </div>
           <div class="dados-vendedor">
             <h1 class="nome-catalogo">Ofertas da Semana</h1>
             <div id="nome-vendedor" class="nome-vendedor"></div>
@@ -137,7 +142,15 @@
 
     <div class="carrinho-rodape">
       <p class="carrinho-aviso">Preço final combinado direto com o vendedor, considerando a fração mínima de cada item.</p>
-      <button id="btn-enviar-pedido" class="btn-enviar-pedido" type="button">Enviar pedido pelo WhatsApp</button>
+      <!-- Foto do vendedor (com "?") ao lado do Enviar: tocar nela abre o
+           mini tour do carrinho -->
+      <div class="carrinho-enviar-linha">
+        <div id="carrinho-foto-wrap" class="vendedor-foto-wrap carrinho-foto-wrap" role="button" tabindex="0" aria-label="Ver como funciona o carrinho">
+          <div id="carrinho-foto" class="foto-vendedor carrinho-foto"></div>
+          <span class="foto-ajuda" aria-hidden="true">?</span>
+        </div>
+        <button id="btn-enviar-pedido" class="btn-enviar-pedido" type="button">Enviar pedido pelo WhatsApp</button>
+      </div>
     </div>
   </div>
 
@@ -155,6 +168,29 @@
       <div class="modal-botoes">
         <button id="modal-btn-nao" type="button" class="modal-btn modal-btn-secundario"></button>
         <button id="modal-btn-sim" type="button" class="modal-btn modal-btn-principal"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================== -->
+  <!-- TOUR GUIADO: dica de 1ª visita + passo a passo na voz do vendedor -->
+  <!-- (abre ao tocar na foto do vendedor — ver tour em app.js)          -->
+  <!-- ===================================================== -->
+  <div id="dica-foto" class="dica-foto balao-seta seta-cima" aria-hidden="true">Toque na minha foto e eu te mostro como funciona 😉</div>
+
+  <div id="tour-bloqueio" class="tour-bloqueio" hidden></div>
+  <div id="tour-destaque" class="tour-destaque" hidden></div>
+  <div id="tour-balao" class="tour-balao" hidden role="dialog" aria-live="polite">
+    <div id="tour-mini-foto" class="tour-mini-foto"></div>
+    <div id="tour-caixa" class="tour-caixa balao-seta">
+      <div class="tour-balao-topo">
+        <div id="tour-nome" class="tour-quem"></div>
+        <span id="tour-contador" class="tour-contador"></span>
+      </div>
+      <p id="tour-texto" class="tour-texto"></p>
+      <div class="tour-botoes">
+        <button type="button" id="tour-pular" class="tour-pular">Pular</button>
+        <button type="button" id="tour-proximo" class="tour-proximo">Próximo →</button>
       </div>
     </div>
   </div>

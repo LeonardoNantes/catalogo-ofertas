@@ -675,3 +675,300 @@ button { font-family: inherit; cursor: pointer; }
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
+
+/* ============================================================
+   Cores usadas só pelo tour guiado (o resto do Ofertas usa cores
+   escritas direto, sem variáveis)
+   ============================================================ */
+:root {
+  --cor-primaria: #0E6B54;
+  --cor-destaque: #0E6B54;
+  --cor-dourada: #F6B21B;
+  --cor-fundo: #FAF6EF;
+  --cor-texto: #201F1C;
+  --cor-texto-suave: #6B6A62;
+  --cor-branco: #FFFFFF;
+}
+
+/* Embrulho da foto do vendedor no cabeçalho: dá pra tocar (abre o tour) */
+.vendedor-foto-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ============================================================
+   TOUR GUIADO (toque na foto do vendedor) + dica de 1ª visita
+   ============================================================ */
+
+/* "?" no cantinho da foto — sempre visível, avisa que dá pra tocar */
+.foto-ajuda {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  z-index: 2;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--cor-dourada);
+  color: var(--cor-primaria);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  border: 2px solid var(--cor-primaria);
+  pointer-events: none;
+}
+
+/* Anel pulsando em volta da foto enquanto a dica de 1ª visita está na tela */
+.vendedor-foto-wrap.pulsando::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--cor-dourada);
+  animation: tour-pulsar 1.4s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes tour-pulsar {
+  0% { transform: scale(0.9); opacity: 1; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+/* Setinha dos balões (aponta pro item destacado) */
+.balao-seta::before {
+  content: "";
+  position: absolute;
+  left: var(--seta-x, 30px);
+  width: 14px;
+  height: 14px;
+  background: inherit;
+  transform: translateX(-50%) rotate(45deg);
+}
+.balao-seta.seta-cima::before { top: -6px; }
+.balao-seta.seta-baixo::before { bottom: -6px; }
+
+/* Dica de 1ª visita: "Toque na minha foto..." */
+.dica-foto {
+  position: fixed;
+  z-index: 8000;
+  background: var(--cor-branco);
+  color: var(--cor-primaria);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.3;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  max-width: 240px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 250ms, transform 250ms, visibility 0s linear 250ms;
+  pointer-events: none;
+}
+.dica-foto.visivel {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition: opacity 250ms, transform 250ms;
+}
+
+/* Camada que impede tocar no catálogo enquanto o tour está aberto */
+.tour-bloqueio {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: transparent;
+}
+.tour-bloqueio[hidden],
+.tour-destaque[hidden],
+.tour-balao[hidden] { display: none; }
+
+/* "Recorte" iluminado em volta do item explicado (o resto escurece) */
+.tour-destaque {
+  position: fixed;
+  z-index: 9001;
+  pointer-events: none;
+  border-radius: 14px;
+  box-shadow: 0 0 0 9999px rgba(10, 20, 35, 0.72), 0 0 0 3px var(--cor-dourada);
+  transition: left 300ms ease, top 300ms ease, width 300ms ease, height 300ms ease, border-radius 300ms ease;
+}
+
+/* Fotinha do vendedor do lado de fora + balão de fala */
+.tour-balao {
+  position: fixed;
+  z-index: 9002;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  transition: left 300ms ease, top 300ms ease;
+}
+
+.tour-mini-foto {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+  border: 3px solid var(--cor-dourada);
+  background: var(--cor-primaria);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.tour-caixa {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background: var(--cor-branco);
+  border-radius: 16px;
+  padding: 12px 14px 10px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+}
+
+/* Pontinha do balão de fala, virada pra fotinha do vendedor */
+.tour-caixa::after {
+  content: "";
+  position: absolute;
+  left: -6px;
+  bottom: 16px;
+  width: 14px;
+  height: 14px;
+  background: var(--cor-branco);
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+
+.tour-balao-topo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.tour-quem {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--cor-primaria);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tour-contador {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cor-texto-suave);
+  background: var(--cor-fundo);
+  padding: 3px 8px;
+  border-radius: 100px;
+  flex-shrink: 0;
+}
+
+.tour-texto {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--cor-texto);
+}
+.tour-texto b { color: var(--cor-primaria); }
+
+.tour-botoes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tour-pular {
+  border: none;
+  background: none;
+  color: var(--cor-texto-suave);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 4px;
+}
+
+.tour-proximo {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 18px;
+  background: var(--cor-destaque);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Durante o tour, com o carrinho vazio, o botão de baixo aparece como
+   "Ir para o carrinho" (normal), em vez de cinza "Nenhum item selecionado" */
+.barra-ir-carrinho button.tour-simulado:disabled {
+  background: var(--cor-destaque);
+  color: var(--cor-branco);
+}
+
+/* Na foto pequena do cabeçalho (42px), o "?" é um pouco menor */
+.cabecalho .foto-ajuda {
+  width: 17px;
+  height: 17px;
+  font-size: 10.5px;
+  line-height: 13px;
+  right: -5px;
+  bottom: -5px;
+}
+
+/* Durante o tour, com o carrinho vazio, o botão de baixo aparece normal */
+.rodape .botao-principal.tour-simulado:disabled {
+  background: linear-gradient(135deg, #0E6B54, #0B5744);
+  color: #FFFFFF;
+  box-shadow: 0 6px 18px rgba(14,107,84,0.3);
+}
+
+/* ---------- Carrinho: foto do vendedor (com "?") ao lado do Enviar ---------- */
+/* Tocar nela abre o mini tour do carrinho. O botão verde só ficou um pouco
+   mais estreito pra dar lugar à foto. */
+.carrinho-enviar-linha {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.carrinho-enviar-linha .btn-enviar-pedido {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.carrinho-foto-wrap,
+.carrinho-foto {
+  width: 50px;
+  height: 50px;
+}
+
+.carrinho-foto {
+  font-size: 17px;
+}
+
+/* No Ofertas a fotinha do balão é um quadradinho com a foto de fundo (ou as
+   iniciais do vendedor, quando ele não tem foto) — igual à do cabeçalho */
+.tour-mini-foto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-size: cover;
+  background-position: center;
+  color: #FAF6EF;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+}
