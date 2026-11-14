@@ -49,7 +49,10 @@ function getClient() {
 }
 
 // ---------------- TROCA DE TELA ----------------
-const ESTADOS = ["tela-carregando", "tela-erro", "tela-pausado", "tela-vazio", "app"];
+// "tela-carrinho" entrou nessa lista junto com o carrinho novo — abrir o
+// carrinho é só mais um estado de tela, igual às outras (some o "app" e
+// mostra o carrinho; voltar faz o caminho contrário).
+const ESTADOS = ["tela-carregando", "tela-erro", "tela-pausado", "tela-vazio", "app", "tela-carrinho"];
 function mostrarEstado(id) {
   ESTADOS.forEach((e) => { document.getElementById(e).hidden = e !== id; });
 }
@@ -227,7 +230,7 @@ function definirQuantidade(codigo, valorDigitado) {
 // ---------------- ESTADO DA PÁGINA (interesse / quantidade) ----------------
 const QTY = new Map(); // codigo -> quantidade
 let TODOS_ITENS = [];
-let CATEGORIA_ATIVA = "todos";
+let CATEGORIA_ATIVA = null; // não existe mais aba "Todos" — definida em iniciar() pra primeira categoria com item
 let ORDEM_PRECO = ""; // "" = padrão, "menor" ou "maior" — só vale pra aba aberta
 let BUSCA = ""; // texto da busca (lupa) — já normalizado, vazio = sem busca
 let VENDEDOR_WHATSAPP = null;
@@ -402,22 +405,54 @@ function compararCategoriasSC(a, b) {
   return a.localeCompare(b, "pt-BR");
 }
 
+// Nome da aba/categoria, já trocado pelo texto da Área SC quando existir
+// (RENOMEAR_ABA_SC) — mesmo texto que já aparece na aba.
+function rotuloCategoria(categoria) {
+  return AREA_VENDEDOR === "SC" && RENOMEAR_ABA_SC[categoria] ? RENOMEAR_ABA_SC[categoria] : categoria;
+}
+
+// Algumas categorias são "sellers" com pedido mínimo próprio (Danilla,
+// Gaúcha Farma, Pado, Girassol, etc.) — o valor já vem escrito dentro do
+// texto da aba, de dois jeitos possíveis: ou direto no nome real da
+// categoria (ex: "Pado R$800,00"), ou só no texto trocado pela Área SC
+// (ex: "GauchaFarma" → "Gaucha R$250,00"). Essa função acha o "R$ X,XX"
+// de dentro desse texto, de qualquer um dos dois jeitos — e devolve null
+// pra categoria comum (Black November, Bebidas, Limpeza, etc.), que não
+// tem pedido mínimo nenhum.
+function pedidoMinimoDaCategoria(categoria) {
+  const match = rotuloCategoria(categoria).match(/R\$\s?[\d.,]+/);
+  return match ? match[0] : null;
+}
+
+// Título do grupo no carrinho: o nome da categoria/seller sem o "R$ X,XX"
+// (que já aparece destacado à parte, no aviso de pedido mínimo).
+function tituloGrupoCarrinho(categoria) {
+  return rotuloCategoria(categoria).replace(/\s*R\$\s?[\d.,]+/, "").trim() || categoria;
+}
+
+// Lista (ordenada) de categorias que têm pelo menos 1 item publicado —
+// usada tanto pra desenhar as abas quanto pra escolher a aba inicial (não
+// existe mais aba "Todos": a primeira categoria da lista já abre
+// selecionada, igual já acontece nos catálogos Impala/Nadir/Havaianas).
+function categoriasOrdenadasPresentes() {
+  return Array.from(new Set(TODOS_ITENS.map((i) => i.categoria)))
+    .filter(Boolean)
+    .sort(AREA_VENDEDOR === "SC" ? compararCategoriasSC : (a, b) => a.localeCompare(b, "pt-BR"));
+}
+
 function renderizarAbas() {
   // Mostra aba pra qualquer categoria que tiver item de verdade — não só
   // as 10 fixas de CATEGORIAS_INFO — pra categoria nova criada no Painel
   // de Preços também aparecer aqui (ela só não tem cor/ícone específicos,
   // usa o visual genérico de "Outros" via infoCategoria/iconeCategoria).
   // Área SC segue a ordem fixa do Leonardo; as outras áreas, ordem alfabética.
-  const categoriasPresentes = Array.from(new Set(TODOS_ITENS.map((i) => i.categoria)))
-    .filter(Boolean)
-    .sort(AREA_VENDEDOR === "SC" ? compararCategoriasSC : (a, b) => a.localeCompare(b, "pt-BR"));
   // Na Área SC, algumas categorias aparecem com outro texto na aba (pedido do
   // Leonardo) — é só o texto; o filtro dos itens continua usando o nome de
   // categoria de verdade, então nada quebra.
-  const abas = [{ key: "todos", label: "Todos" }, ...categoriasPresentes.map((c) => ({
+  const abas = categoriasOrdenadasPresentes().map((c) => ({
     key: c,
     label: AREA_VENDEDOR === "SC" && RENOMEAR_ABA_SC[c] ? RENOMEAR_ABA_SC[c] : c,
-  }))];
+  }));
 
   const nav = document.getElementById("categoria-tabs");
   // Guarda onde a barra estava antes de redesenhar (redesenhar zera a
@@ -489,7 +524,7 @@ function fecharBusca() {
 function renderizarItens() {
   const lista = document.getElementById("lista-itens");
   const itensFiltrados = TODOS_ITENS
-    .filter((i) => (BUSCA ? itemBateComBusca(i, BUSCA) : CATEGORIA_ATIVA === "todos" || i.categoria === CATEGORIA_ATIVA))
+    .filter((i) => (BUSCA ? itemBateComBusca(i, BUSCA) : i.categoria === CATEGORIA_ATIVA))
     .sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR"));
 
   // Ordenar por preço — só dentro da aba aberta, não mexe na ordem padrão de verdade
@@ -624,28 +659,117 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !document.getElementById("foto-zoom-fundo").hidden) fecharFotoAmpliada();
 });
 
+// Conta PRODUTOS marcados (não a soma das quantidades) — mesmo critério que
+// já era usado no "Enviar interesse (N itens)" antigo, só que agora manda
+// pro carrinho em vez de direto pro WhatsApp.
+function totalItensCarrinho() {
+  return Array.from(QTY.values()).filter((q) => q > 0).length;
+}
+
 function atualizarRodape() {
-  const btn = document.getElementById("btn-enviar-interesse");
+  const btn = document.getElementById("btn-ir-carrinho");
   const btnPdf = document.getElementById("btn-gerar-pdf");
   const btnPng = document.getElementById("btn-gerar-png");
   const btnPdfPedido = document.getElementById("btn-pdf-pedido");
   const btnLimpar = document.getElementById("btn-limpar-itens");
-  const totalItens = Array.from(QTY.values()).filter((q) => q > 0).length;
+  const totalItens = totalItensCarrinho();
   if (totalItens > 0) {
-    btn.textContent = `Enviar interesse (${totalItens} ${totalItens === 1 ? "item" : "itens"})`;
+    btn.textContent = `Ir para o carrinho (${totalItens} ${totalItens === 1 ? "item" : "itens"})`;
     btn.disabled = false;
     btnPdf.disabled = false;
     btnPng.disabled = false;
     btnPdfPedido.disabled = false;
     btnLimpar.disabled = false;
   } else {
-    btn.textContent = "Marque os itens de interesse";
+    btn.textContent = "Nenhum item selecionado";
     btn.disabled = true;
     btnPdf.disabled = true;
     btnPng.disabled = true;
     btnPdfPedido.disabled = true;
     btnLimpar.disabled = true;
   }
+}
+
+// ---------------- TELA DO CARRINHO ----------------
+// Agrupa os itens marcados por categoria (mesma ordem das abas) — cada
+// grupo mostra o aviso de "Pedido mínimo R$X" quando a categoria for uma
+// das "sellers" com mínimo próprio (Danilla, Gaúcha, Pado, Girassol...).
+function agruparCarrinhoPorCategoria() {
+  const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
+  const porCategoria = new Map();
+  itensMarcados.forEach((item) => {
+    if (!porCategoria.has(item.categoria)) porCategoria.set(item.categoria, []);
+    porCategoria.get(item.categoria).push(item);
+  });
+  const categoriasOrdenadas = Array.from(porCategoria.keys())
+    .sort(AREA_VENDEDOR === "SC" ? compararCategoriasSC : (a, b) => a.localeCompare(b, "pt-BR"));
+  return categoriasOrdenadas.map((categoria) => ({
+    categoria,
+    itens: porCategoria.get(categoria).sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR")),
+  }));
+}
+
+function renderizarCarrinho() {
+  const lista = document.getElementById("lista-carrinho");
+  const grupos = agruparCarrinhoPorCategoria();
+
+  if (grupos.length === 0) {
+    lista.innerHTML = `
+      <div class="carrinho-vazio">
+        <span class="carrinho-vazio-icone">🛒</span>
+        <p>Seu carrinho está vazio.<br>Volte e marque os itens que te interessam.</p>
+      </div>
+    `;
+    return;
+  }
+
+  lista.innerHTML = grupos.map((grupo) => {
+    const minimo = pedidoMinimoDaCategoria(grupo.categoria);
+    const linhasItens = grupo.itens.map((item) => {
+      const qty = QTY.get(item.codigo) || 0;
+      return `
+        <div class="carrinho-item-linha" data-codigo="${escapeAttr(item.codigo)}">
+          <div class="carrinho-item-info">
+            <p class="carrinho-item-nome">${escapeHtml(item.descricao)}</p>
+            <p class="carrinho-item-codigo">Cód. ${escapeHtml(item.codigo)}</p>
+            <p class="carrinho-item-preco">${formatarPreco(item.preco)} cada</p>
+          </div>
+          <div class="item-qty" data-codigo="${escapeAttr(item.codigo)}">
+            <button type="button" class="btn-dec" aria-label="Diminuir quantidade">−</button>
+            <div class="qty-valor">${qty}</div>
+            <button type="button" class="btn-inc" aria-label="Aumentar quantidade">+</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <div class="grupo-carrinho">
+        <div class="grupo-carrinho-titulo">${escapeHtml(tituloGrupoCarrinho(grupo.categoria))}</div>
+        ${minimo ? `<div class="grupo-carrinho-minimo">Pedido mínimo ${escapeHtml(minimo)}</div>` : ""}
+        <div class="grupo-carrinho-itens">${linhasItens}</div>
+      </div>
+    `;
+  }).join("");
+
+  lista.querySelectorAll(".item-qty").forEach((el) => {
+    const codigo = el.dataset.codigo;
+    el.querySelector(".btn-dec").addEventListener("click", () => { dec(codigo); renderizarCarrinho(); });
+    el.querySelector(".btn-inc").addEventListener("click", () => { inc(codigo); renderizarCarrinho(); });
+  });
+}
+
+function abrirCarrinho() {
+  renderizarCarrinho();
+  mostrarEstado("tela-carrinho");
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+function voltarDoCarrinho() {
+  // Redesenha a lista principal (pode ter mudado quantidade dentro do
+  // carrinho) e volta pra tela do catálogo.
+  renderizarItens();
+  mostrarEstado("app");
 }
 
 // Agrupa por categoria (ordem alfabética) e ordena os itens de cada
@@ -1396,32 +1520,38 @@ document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
   }
 });
 
-document.getElementById("btn-enviar-interesse").addEventListener("click", () => {
-  const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
-  if (itensMarcados.length === 0 || !VENDEDOR_WHATSAPP) return;
+// Botão completo do rodapé do catálogo: só abre o carrinho (igual aos
+// catálogos Impala/Nadir/Havaianas) — o envio pelo WhatsApp agora acontece
+// de dentro da tela do carrinho (btn-enviar-pedido, mais abaixo).
+document.getElementById("btn-ir-carrinho").addEventListener("click", () => {
+  if (totalItensCarrinho() === 0) return;
+  abrirCarrinho();
+});
+document.getElementById("btn-voltar-carrinho").addEventListener("click", voltarDoCarrinho);
 
-  // Agrupa por categoria (não pela ordem que o cliente foi marcando) e
-  // ordena tanto as categorias quanto os itens dentro de cada uma em
-  // ordem alfabética.
-  const porCategoria = new Map();
-  itensMarcados.forEach((item) => {
-    if (!porCategoria.has(item.categoria)) porCategoria.set(item.categoria, []);
-    porCategoria.get(item.categoria).push(item);
-  });
+// Envio do pedido pelo WhatsApp, de dentro da tela do carrinho. Agrupa por
+// categoria (mesmo agrupamento mostrado na tela), com o aviso de pedido
+// mínimo embaixo do nome de cada grupo que tiver — e, no lugar de um total
+// somado, o mesmo aviso que já aparece no rodapé da tela do carrinho.
+document.getElementById("btn-enviar-pedido").addEventListener("click", () => {
+  const grupos = agruparCarrinhoPorCategoria();
+  if (grupos.length === 0 || !VENDEDOR_WHATSAPP) return;
 
-  const categoriasOrdenadas = Array.from(porCategoria.keys()).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const nomeLoja = document.getElementById("input-loja").value.trim();
 
-  const blocos = categoriasOrdenadas.map((categoria) => {
-    const itensDaCategoria = porCategoria.get(categoria).sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR"));
-    const linhas = itensDaCategoria.map((i) => `Cód: ${i.codigo} | Qtd: ${QTY.get(i.codigo)}`);
-    return `- *${categoria.toUpperCase()}*\n${linhas.join("\n")}`;
+  const blocos = grupos.map((grupo) => {
+    const minimo = pedidoMinimoDaCategoria(grupo.categoria);
+    const tituloGrupo = tituloGrupoCarrinho(grupo.categoria).toUpperCase();
+    const linhas = grupo.itens.map((i) => `Cód: ${i.codigo} | Qtd: ${QTY.get(i.codigo)} | ${formatarPreco(i.preco)}`);
+    return `- *${tituloGrupo}*${minimo ? ` (Pedido mínimo ${minimo})` : ""}\n${linhas.join("\n")}`;
   });
 
   const mensagem =
     `*${tituloPrePedido("OFERTAS DA SEMANA")}*\n` +
+    (nomeLoja ? `_Loja: ${nomeLoja}_\n` : "") +
     `_Olá! tenho interesse nestes itens:_\n\n` +
     blocos.join("\n\n") +
-    `\n\n_(Vamos negociar esses itens!)_`;
+    `\n\n_(Preço final combinado direto com o vendedor, considerando a fração mínima de cada item.)_`;
 
   const url = `https://wa.me/${VENDEDOR_WHATSAPP}?text=${encodeURIComponent(mensagem)}`;
   window.open(url, "_blank");
@@ -1432,7 +1562,7 @@ document.getElementById("btn-enviar-interesse").addEventListener("click", () => 
   salvarItensMarcados();
 });
 
-// Lixeira do rodapé — desmarca tudo de uma vez, com confirmação.
+// Lixeira do cabeçalho do carrinho — desmarca tudo de uma vez, com confirmação.
 document.getElementById("btn-limpar-itens").addEventListener("click", async () => {
   const totalItens = Array.from(QTY.values()).filter((q) => q > 0).length;
   if (totalItens === 0) return;
@@ -1445,6 +1575,7 @@ document.getElementById("btn-limpar-itens").addEventListener("click", async () =
   if (confirmou) {
     QTY.clear();
     aposMudarItens();
+    renderizarCarrinho();
   }
 });
 
@@ -1461,8 +1592,11 @@ document.getElementById("btn-pdf-pedido").addEventListener("click", () => {
   botao.disabled = true;
 
   try {
-    const grupos = agruparPorCategoriaOrdenado(itensMarcados);
+    // Mesmo agrupamento mostrado na tela do carrinho (por categoria, na
+    // ordem das abas) — não o agrupamento alfabético usado no PNG/PDF-molde.
+    const grupos = agruparCarrinhoPorCategoria();
 
+    const nomeLoja = document.getElementById("input-loja").value.trim();
     const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
     // No PDF/Imagem usa sempre o texto completo ("Ofertas de DD/MM a DD/MM"),
     // mesmo que na tela o rótulo tenha ficado mais curto pra caber no celular.
@@ -1496,6 +1630,10 @@ document.getElementById("btn-pdf-pedido").addEventListener("click", () => {
     const dataTexto = new Date().toLocaleDateString("pt-BR");
     doc.text(`Vendedor: ${nomeVendedor || "-"}   •   Data: ${dataTexto}`, margemX, y);
     y += 6;
+    if (nomeLoja) {
+      doc.text(`Loja: ${nomeLoja}`, margemX, y);
+      y += 6;
+    }
     if (textoSemana) {
       doc.text(textoSemana, margemX, y);
       y += 6;
@@ -1505,10 +1643,11 @@ document.getElementById("btn-pdf-pedido").addEventListener("click", () => {
     grupos.forEach((grupo) => {
       novaPaginaSeNecessario(14);
 
+      const minimo = pedidoMinimoDaCategoria(grupo.categoria);
       doc.setFont("helvetica", "bolditalic");
       doc.setFontSize(12);
       doc.setTextColor(11, 87, 68);
-      doc.text(grupo.categoria.toUpperCase(), margemX, y);
+      doc.text(tituloGrupoCarrinho(grupo.categoria).toUpperCase() + (minimo ? `  (Pedido mínimo ${minimo})` : ""), margemX, y);
       y += 2.5;
 
       doc.setDrawColor(220, 230, 226);
@@ -1618,6 +1757,8 @@ async function iniciar() {
   }
 
   TODOS_ITENS = oferta.itens;
+  // Primeira categoria com item já abre selecionada (sem aba "Todos").
+  CATEGORIA_ATIVA = categoriasOrdenadasPresentes()[0] || null;
   {
     // Na tela mostra só os dias, pra caber bem na barra em celulares pequenos.
     // No PDF/Imagem gerados continua saindo o texto completo de sempre.

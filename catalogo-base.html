@@ -47,15 +47,26 @@
             <div id="nome-vendedor" class="nome-vendedor"></div>
             <div class="frase-vendedor">O seu vendedor!</div>
           </div>
-          <button id="btn-busca" class="botao-pdf botao-busca" type="button" aria-label="Buscar produto" title="Buscar produto">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0E6B54" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="20" y1="20" x2="16.2" y2="16.2"></line></svg>
-          </button>
-          <button id="btn-gerar-png" class="botao-pdf" type="button" disabled aria-label="Gerar imagem" title="Gerar imagem (PNG)">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0E6B54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg>
-          </button>
-          <button id="btn-gerar-pdf" class="botao-pdf" type="button" disabled aria-label="Gerar PDF" title="Gerar PDF">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0E6B54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="13" y2="17"></line></svg>
-          </button>
+          <div class="acoes-cabecalho">
+            <div class="acao-cabecalho">
+              <button id="btn-busca" class="botao-pdf botao-busca" type="button" aria-label="Buscar produto" title="Buscar produto">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0E6B54" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="20" y1="20" x2="16.2" y2="16.2"></line></svg>
+              </button>
+              <span class="acao-cabecalho-rotulo">Buscar</span>
+            </div>
+            <div class="acao-cabecalho">
+              <button id="btn-gerar-pdf" class="botao-pdf" type="button" disabled aria-label="Gerar PDF" title="Gerar PDF">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0E6B54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="13" y2="17"></line></svg>
+              </button>
+              <span class="acao-cabecalho-rotulo">PDF</span>
+            </div>
+            <div class="acao-cabecalho">
+              <button id="btn-gerar-png" class="botao-pdf" type="button" disabled aria-label="Gerar imagem" title="Gerar imagem (PNG)">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0E6B54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg>
+              </button>
+              <span class="acao-cabecalho-rotulo">Imagem</span>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -81,13 +92,44 @@
     <main id="lista-itens" class="lista-itens"></main>
 
     <div class="rodape">
-      <button id="btn-limpar-itens" class="botao-limpar" type="button" disabled aria-label="Desmarcar todos os itens" title="Desmarcar todos os itens">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#B91C1C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+      <button id="btn-ir-carrinho" class="botao-principal botao-ir-carrinho" type="button" disabled>Nenhum item selecionado</button>
+    </div>
+  </div>
+
+  <!-- ===================================================== -->
+  <!-- TELA DO CARRINHO — aberta ao tocar em "Ir para o carrinho" -->
+  <!-- Mesmo formato dos catálogos Impala/Nadir/Havaianas: cabeçalho   -->
+  <!-- secundário (voltar + título + PDF do pedido + excluir tudo),    -->
+  <!-- itens agrupados por categoria (com aviso de pedido mínimo nos   -->
+  <!-- grupos que têm, ex: Danilla/Gaúcha/Pado/Girassol) e, no rodapé, -->
+  <!-- em vez de somar um total, um aviso + o botão de enviar.         -->
+  <!-- ===================================================== -->
+  <div id="tela-carrinho" class="tela-carrinho" hidden>
+    <header class="header-secundario">
+      <button id="btn-voltar-carrinho" type="button" class="btn-voltar" aria-label="Voltar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
       </button>
-      <button id="btn-pdf-pedido" class="botao-pre-pedido" type="button" disabled aria-label="Gerar PDF do pré-pedido" title="Gerar PDF do pré-pedido">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0E6B54" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="13" y2="17"></line></svg>
+      <h2>Seu carrinho</h2>
+      <button id="btn-pdf-pedido" class="btn-acao-secundaria" type="button" disabled aria-label="Gerar PDF do pedido" title="Gerar PDF do pedido">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="9" y1="14" x2="15" y2="14"></line><line x1="9" y1="17.5" x2="13" y2="17.5"></line></svg>
+        <span>PDF</span>
       </button>
-      <button id="btn-enviar-interesse" class="botao-principal" disabled>Marque os itens de interesse</button>
+      <button id="btn-limpar-itens" class="btn-acao-secundaria" type="button" disabled aria-label="Excluir todos os itens" title="Excluir todos os itens">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+        <span>Excluir</span>
+      </button>
+    </header>
+
+    <div class="carrinho-loja">
+      <label for="input-loja">Nome da loja (opcional)</label>
+      <input id="input-loja" type="text" placeholder="Ex: Loja 1, CNPJ, ou deixe em branco" />
+    </div>
+
+    <div id="lista-carrinho" class="lista-carrinho"></div>
+
+    <div class="carrinho-rodape">
+      <p class="carrinho-aviso">Preço final combinado direto com o vendedor, considerando a fração mínima de cada item.</p>
+      <button id="btn-enviar-pedido" class="btn-enviar-pedido" type="button">Enviar pedido pelo WhatsApp</button>
     </div>
   </div>
 

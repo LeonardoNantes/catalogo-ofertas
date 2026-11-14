@@ -54,19 +54,24 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 /* ---------- CABEÇALHO ---------- */
+/* Fundo escuro (antes era branco) pra dar destaque de verdade pros ícones
+   de Buscar/PDF/Imagem — mesmo ajuste pedido pelo Leonardo que já foi
+   aplicado nos catálogos Impala/Nadir/Havaianas. Gradiente verde bem
+   escuro (quase preto) em vez de preto puro, pra continuar com a cara da
+   marca "Ofertas da Semana" (o mesmo verde #0E6B54 usado em todo o resto). */
 .cabecalho {
-  padding: 9px 20px 8px;
-  background: #FFFFFF;
+  padding: 11px 20px 10px;
+  background: linear-gradient(135deg, #0B2E26 0%, #061C16 100%);
   display: flex;
   flex-direction: column;
   gap: 14px;
   position: relative;
   z-index: 2;
-  box-shadow: 0 1px 0 rgba(31,30,29,0.06);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.2);
 }
 .linha-vendedor { display: flex; align-items: center; gap: 10px; }
 .foto-vendedor {
-  width: 40px; height: 40px;
+  width: 42px; height: 42px;
   border-radius: 50%;
   background: linear-gradient(135deg, #0E6B54, #0B5744);
   color: #FAF6EF;
@@ -76,11 +81,37 @@ button { font-family: inherit; cursor: pointer; }
   flex-shrink: 0;
   background-size: cover;
   background-position: center;
-  box-shadow: 0 2px 6px rgba(14,107,84,0.3), 0 0 0 3px #FFFFFF, 0 0 0 4px rgba(14,107,84,0.14);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.35), 0 0 0 2px #F6B21B, 0 0 0 3px rgba(246,178,27,0.25);
 }
 .dados-vendedor { display: flex; flex-direction: column; gap: 1px; flex-grow: 1; min-width: 0; }
-.nome-vendedor { font-weight: 600; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frase-vendedor { font-size: 11px; font-style: italic; color: #5E5D59; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nome-vendedor { font-weight: 600; font-size: 14.5px; color: #FFFFFF; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frase-vendedor { font-size: 11px; font-style: italic; color: rgba(255,255,255,0.68); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Buscar / PDF / Imagem no cabeçalho (ícone + nome embaixo) ---------- */
+/* Mesmo padrão dos catálogos Impala/Nadir/Havaianas: cada ícone ganha uma
+   descrição pequena embaixo, em branco com sombra de leitura, pra ficar
+   legível sobre o fundo escuro novo do cabeçalho. */
+.acoes-cabecalho {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.acao-cabecalho {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.acao-cabecalho-rotulo {
+  font-size: 8.5px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.88);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
 
 /* ---------- BANNER SEMANA ---------- */
 .banner-semana {
@@ -231,20 +262,19 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 /* ---------- RODAPÉ ---------- */
+/* Agora é só o botão "Ir para o carrinho", completo (mesmo padrão dos
+   catálogos Impala/Nadir/Havaianas) — "Gerar PDF do pedido" e "Excluir
+   tudo" se mudaram pra dentro da tela do carrinho (ver .header-secundario). */
 .rodape {
   position: sticky; bottom: 0;
   padding: 14px 20px 18px;
   background: #FFFFFF;
   border-top: 0.5px solid rgba(31,30,29,0.12);
   box-shadow: 0 -6px 20px rgba(32,31,28,0.06);
-  display: flex;
-  align-items: stretch;
-  gap: 10px;
 }
 .rodape .botao-principal {
-  flex: 1;
-  min-width: 0;
-  padding: 15px 10px; border-radius: 14px; font-size: 14px; border: none;
+  width: 100%;
+  padding: 15px 10px; border-radius: 14px; font-size: 14.5px; border: none;
   background: linear-gradient(135deg, #0E6B54, #0B5744);
   box-shadow: 0 6px 18px rgba(14,107,84,0.3);
   transition: box-shadow 0.15s, transform 0.1s;
@@ -255,37 +285,163 @@ button { font-family: inherit; cursor: pointer; }
 .rodape .botao-principal:active { transform: scale(0.98); }
 .rodape .botao-principal:disabled { background: #F0EEE6; color: #6B6A62; cursor: default; box-shadow: none; }
 
-.botao-pre-pedido {
-  flex-shrink: 0;
-  width: 54px;
-  border-radius: 14px;
-  border: 1.5px solid rgba(14,107,84,0.3);
-  background: #FFFFFF;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: box-shadow 0.15s, transform 0.1s;
+/* ============================================================
+   TELA DO CARRINHO
+   ============================================================ */
+.tela-carrinho {
+  min-height: 100vh;
+  background: #FAF6EF;
+  padding-bottom: 150px;
 }
-.botao-pre-pedido:active { transform: scale(0.95); }
-.botao-pre-pedido:disabled { border-color: rgba(31,30,29,0.12); cursor: default; }
-.botao-pre-pedido:disabled svg { stroke: #B7B5AC; }
 
-.botao-limpar {
-  flex-shrink: 0;
-  width: 54px;
-  border-radius: 14px;
-  border: 1.5px solid rgba(185,28,28,0.3);
-  background: #FFFFFF;
+.header-secundario {
+  background: linear-gradient(135deg, #0B2E26 0%, #061C16 100%);
+  color: #FFFFFF;
+  padding: 14px 16px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: box-shadow 0.15s, transform 0.1s;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
-.botao-limpar:active { transform: scale(0.95); }
-.botao-limpar:disabled { border-color: rgba(31,30,29,0.12); cursor: default; }
-.botao-limpar:disabled svg { stroke: #B7B5AC; }
+.header-secundario h2 { margin: 0; font-size: 1.05rem; font-weight: 700; flex: 1; font-family: 'Space Grotesk', sans-serif; }
+.btn-voltar {
+  border: none;
+  background: rgba(255,255,255,0.14);
+  color: #FFFFFF;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.btn-voltar:active { transform: scale(0.92); }
+.btn-acao-secundaria {
+  border: none;
+  background: transparent;
+  color: #FFFFFF;
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 3px 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.92;
+}
+.btn-acao-secundaria:active { transform: scale(0.94); opacity: 1; }
+.btn-acao-secundaria:disabled { opacity: 0.4; cursor: default; }
+
+.carrinho-loja {
+  max-width: 640px;
+  margin: 14px auto 0;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.carrinho-loja label { font-size: 12px; color: #5E5D59; }
+.carrinho-loja input {
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(31,30,29,0.16);
+  font-size: 15px;
+  background: #FFFFFF;
+  font-family: inherit;
+}
+
+.lista-carrinho {
+  max-width: 640px;
+  margin: 16px auto 0;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.carrinho-vazio {
+  text-align: center;
+  padding: 48px 20px;
+  color: #5E5D59;
+}
+.carrinho-vazio-icone { font-size: 2.4rem; display: block; margin-bottom: 10px; }
+
+/* Cada grupo = uma categoria (ou "seller" como Danilla/Gaúcha/Pado/
+   Girassol). Grupos com pedido mínimo cadastrado mostram o aviso logo
+   abaixo do título — reforça o que já aparece no nome da aba. */
+.grupo-carrinho-titulo {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #0B5744;
+  margin-bottom: 6px;
+}
+.grupo-carrinho-minimo {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #96660A;
+  background: #FFF4D9;
+  border-radius: 100px;
+  padding: 3px 10px;
+  margin-bottom: 10px;
+}
+.grupo-carrinho-itens {
+  background: #FFFFFF;
+  border-radius: 14px;
+  box-shadow: 0 2px 10px rgba(32,31,28,0.07);
+  overflow: hidden;
+}
+
+.carrinho-item-linha {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(31,30,29,0.08);
+}
+.carrinho-item-linha:last-child { border-bottom: none; }
+.carrinho-item-info { flex: 1; min-width: 0; }
+.carrinho-item-nome { margin: 0; font-size: 13.5px; font-weight: 600; line-height: 1.3; }
+.carrinho-item-codigo { margin: 2px 0 0; font-size: 11px; color: #5E5D59; }
+.carrinho-item-preco { margin: 3px 0 0; font-size: 12.5px; font-weight: 700; color: #0B5744; }
+
+.carrinho-rodape {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 20;
+  background: #FFFFFF;
+  box-shadow: 0 -6px 20px rgba(32,31,28,0.1);
+  padding: 12px 20px calc(14px + env(safe-area-inset-bottom));
+}
+.carrinho-rodape > * { max-width: 640px; margin-left: auto; margin-right: auto; }
+.carrinho-aviso {
+  font-size: 11.5px;
+  color: #5E5D59;
+  text-align: center;
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+.btn-enviar-pedido {
+  display: block;
+  width: 100%;
+  padding: 15px;
+  border: none;
+  border-radius: 14px;
+  background: #25D366;
+  color: #FFFFFF;
+  font-size: 14.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(37,211,102,0.35);
+}
+.btn-enviar-pedido:active { transform: scale(0.98); }
 
 .modal-overlay {
   position: fixed;
@@ -342,19 +498,19 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .botao-pdf {
-  width: 40px; height: 40px;
+  width: 34px; height: 34px;
   border-radius: 50%;
-  background: #E3EFEA;
+  background: #FFFFFF;
   border: none;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(14,107,84,0.18);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
   transition: box-shadow 0.15s, transform 0.1s;
 }
 .botao-pdf:active { transform: scale(0.95); }
-.botao-pdf:disabled { background: #F0EEE6; cursor: default; box-shadow: none; }
-.botao-pdf:disabled svg { stroke: #B7B5AC; }
+.botao-pdf:disabled { background: rgba(255,255,255,0.35); cursor: default; box-shadow: none; }
+.botao-pdf:disabled svg { stroke: rgba(14,107,84,0.45); }
 .rodape-aviso { text-align: center; font-size: 11px; color: #5E5D59; margin-top: 8px; }
 
 /* ---------- BUSCA (lupa no cabeçalho) ---------- */
