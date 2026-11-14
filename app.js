@@ -231,6 +231,7 @@ function definirQuantidade(codigo, valorDigitado) {
 const QTY = new Map(); // codigo -> quantidade
 let TODOS_ITENS = [];
 let CATEGORIA_ATIVA = null; // não existe mais aba "Todos" — definida em iniciar() pra primeira categoria com item
+let GRUPO_ATIVO = "martins"; // "martins" ou "parceiros" — definido em iniciar()
 let ORDEM_PRECO = ""; // "" = padrão, "menor" ou "maior" — só vale pra aba aberta
 let BUSCA = ""; // texto da busca (lupa) — já normalizado, vazio = sem busca
 let VENDEDOR_WHATSAPP = null;
@@ -440,6 +441,26 @@ function categoriasOrdenadasPresentes() {
     .sort(AREA_VENDEDOR === "SC" ? compararCategoriasSC : (a, b) => a.localeCompare(b, "pt-BR"));
 }
 
+// ---------------- GRUPO: Martins x Parceiros ----------------
+// Toda categoria cujo nome de aba (depois do RENOMEAR_ABA_SC, quando vale)
+// termina com um valor em R$ é "parceiro" — é o mesmo sinal que já usamos
+// pro selo de "Pedido mínimo" no carrinho (pedidoMinimoDaCategoria). O
+// resto é "martins". Funciona em qualquer área: nas que não têm nenhuma
+// categoria de seller, o grupo "parceiros" simplesmente fica vazio.
+function grupoDaCategoria(categoria) {
+  return pedidoMinimoDaCategoria(categoria) ? "parceiros" : "martins";
+}
+
+function categoriasDoGrupo(grupo) {
+  return categoriasOrdenadasPresentes().filter((c) => grupoDaCategoria(c) === grupo);
+}
+
+function renderizarAbasGrupo() {
+  document.querySelectorAll(".aba-grupo").forEach((btn) => {
+    btn.classList.toggle("ativa", btn.dataset.grupo === GRUPO_ATIVO);
+  });
+}
+
 function renderizarAbas() {
   // Mostra aba pra qualquer categoria que tiver item de verdade — não só
   // as 10 fixas de CATEGORIAS_INFO — pra categoria nova criada no Painel
@@ -449,7 +470,8 @@ function renderizarAbas() {
   // Na Área SC, algumas categorias aparecem com outro texto na aba (pedido do
   // Leonardo) — é só o texto; o filtro dos itens continua usando o nome de
   // categoria de verdade, então nada quebra.
-  const abas = categoriasOrdenadasPresentes().map((c) => ({
+  // Só mostra a categoria do grupo (Martins/Parceiros) escolhido ali em cima.
+  const abas = categoriasDoGrupo(GRUPO_ATIVO).map((c) => ({
     key: c,
     label: AREA_VENDEDOR === "SC" && RENOMEAR_ABA_SC[c] ? RENOMEAR_ABA_SC[c] : c,
   }));
@@ -532,15 +554,15 @@ function renderizarItens() {
   if (ORDEM_PRECO && !BUSCA) {
     itensFiltrados.sort((a, b) => (ORDEM_PRECO === "menor" ? 1 : -1) * ((Number(a.preco) || 0) - (Number(b.preco) || 0)));
   }
-  const seletorOrdem = document.getElementById("ordem-preco");
-  seletorOrdem.value = ORDEM_PRECO;
-  seletorOrdem.classList.toggle("ativa", !!ORDEM_PRECO);
-  seletorOrdem.hidden = !!BUSCA;
+  atualizarBotaoOrdenar();
+  document.getElementById("ordenar-wrap").hidden = !!BUSCA;
 
   if (itensFiltrados.length === 0) {
     lista.innerHTML = BUSCA
       ? `<p class="sem-itens">Nenhum produto encontrado para "${escapeHtml(document.getElementById("campo-busca").value.trim())}".</p>`
-      : '<p class="sem-itens">Nenhum item nessa categoria.</p>';
+      : CATEGORIA_ATIVA
+        ? '<p class="sem-itens">Nenhum item nessa categoria.</p>'
+        : '<p class="sem-itens">Nenhuma oferta de parceiro disponível nesta semana.</p>';
     return;
   }
 
@@ -616,10 +638,62 @@ function renderizarItens() {
   });
 }
 
-document.getElementById("ordem-preco").addEventListener("change", (e) => {
-  ORDEM_PRECO = e.target.value;
-  renderizarItens();
-  window.scrollTo({ top: 0, behavior: "instant" });
+// ---------------- Ordenar por preço (ícone + menu, igual ao Nadir) ----------------
+function atualizarBotaoOrdenar() {
+  document.getElementById("btn-ordenar").classList.toggle("ativo", !!ORDEM_PRECO);
+  document.querySelectorAll("#menu-ordenar button").forEach((btn) => {
+    btn.classList.toggle("selecionada", (btn.dataset.ordenacao || "") === ORDEM_PRECO);
+  });
+}
+
+{
+  const menuOrdenar = document.getElementById("menu-ordenar");
+  document.getElementById("btn-ordenar").addEventListener("click", (e) => {
+    e.stopPropagation();
+    menuOrdenar.hidden = !menuOrdenar.hidden;
+  });
+  menuOrdenar.querySelectorAll("button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      ORDEM_PRECO = btn.dataset.ordenacao || "";
+      menuOrdenar.hidden = true;
+      renderizarItens();
+      window.scrollTo({ top: 0, behavior: "instant" });
+    });
+  });
+  // Com o menu aberto, tocar fora dele só fecha o menu — não deixa o toque
+  // passar pro que estiver embaixo (senão o cliente podia, sem querer, somar
+  // uma unidade num "+" só tentando fechar o menu).
+  document.addEventListener("click", (e) => {
+    if (!menuOrdenar.hidden && !menuOrdenar.contains(e.target)) {
+      menuOrdenar.hidden = true;
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
+}
+
+// ---------------- Abas de grupo (Martins / Parceiros) ----------------
+document.querySelectorAll(".aba-grupo").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const grupo = btn.dataset.grupo;
+    if (grupo === GRUPO_ATIVO) return;
+    GRUPO_ATIVO = grupo;
+    CATEGORIA_ATIVA = categoriasDoGrupo(GRUPO_ATIVO)[0] || null;
+    ORDEM_PRECO = "";
+    // Tocar num grupo durante a busca sai da busca, igual já acontece ao tocar numa aba de categoria.
+    if (BUSCA || !document.getElementById("barra-busca").hidden) {
+      const campo = document.getElementById("campo-busca");
+      campo.value = "";
+      BUSCA = "";
+      document.getElementById("barra-busca").hidden = true;
+      document.getElementById("btn-busca").classList.remove("ativo");
+      document.getElementById("categoria-tabs").classList.remove("em-busca");
+    }
+    renderizarAbasGrupo();
+    renderizarAbas();
+    renderizarItens();
+    window.scrollTo({ top: 0, behavior: "instant" });
+  });
 });
 
 document.getElementById("btn-busca").addEventListener("click", () => {
@@ -1757,8 +1831,12 @@ async function iniciar() {
   }
 
   TODOS_ITENS = oferta.itens;
-  // Primeira categoria com item já abre selecionada (sem aba "Todos").
-  CATEGORIA_ATIVA = categoriasOrdenadasPresentes()[0] || null;
+  // Abre em "Martins" por padrão; se esse vendedor não tiver nenhum item
+  // Martins essa semana (só parceiro), abre direto em "Parceiros".
+  GRUPO_ATIVO = categoriasDoGrupo("martins").length > 0 ? "martins" : "parceiros";
+  renderizarAbasGrupo();
+  // Primeira categoria com item do grupo já abre selecionada (sem aba "Todos").
+  CATEGORIA_ATIVA = categoriasDoGrupo(GRUPO_ATIVO)[0] || null;
   {
     // Na tela mostra só os dias, pra caber bem na barra em celulares pequenos.
     // No PDF/Imagem gerados continua saindo o texto completo de sempre.
