@@ -15,6 +15,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Work+Sans:wght@400;500;600&family=Montserrat:ital,wght@1,900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css" />
+  <!-- Ícone próprio do catálogo na tela inicial do celular ("Adicionar à
+       tela inicial"). O manifest NÃO tem start_url de propósito: assim o
+       atalho abre exatamente o link de onde foi salvo (com o ?v= do
+       vendedor), e não um catálogo genérico. Sem cópia guardada (service
+       worker): as atualizações continuam chegando na hora. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icone-192.png" />
+  <link rel="apple-touch-icon" href="/icone-180.png" />
+  <meta name="apple-mobile-web-app-title" content="Ofertas" />
+  <meta name="application-name" content="Ofertas" />
+  <meta name="theme-color" content="#0B2E26" />
 </head>
 <body>
 
