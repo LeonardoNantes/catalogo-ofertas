@@ -58,6 +58,9 @@
           <div id="vendedor-foto-wrap" class="vendedor-foto-wrap" role="button" tabindex="0" aria-label="Ver como funciona o catálogo">
             <div id="foto-vendedor" class="foto-vendedor"></div>
             <span class="foto-ajuda" aria-hidden="true">?</span>
+        <!-- Anel dourado que vai enchendo enquanto o vendedor SEGURA a foto
+             (3 segundos abre o menu do vendedor) -->
+        <svg class="anel-segurar" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24" /></svg>
           </div>
           <div class="dados-vendedor">
             <h1 class="nome-catalogo">Ofertas da Semana</h1>
@@ -188,6 +191,18 @@
   <!-- (abre ao tocar na foto do vendedor — ver tour em app.js)          -->
   <!-- ===================================================== -->
   <div id="dica-foto" class="dica-foto balao-seta seta-cima" aria-hidden="true">Toque na minha foto e eu te mostro como funciona 😉</div>
+
+  <!-- MENU DO VENDEDOR: abre ao SEGURAR a foto por 3 segundos (toque
+       escondido, só os vendedores sabem). Toque rápido continua abrindo o
+       tour do cliente. -->
+  <div id="menu-vendedor-fundo" class="menu-vendedor-fundo" hidden></div>
+  <div id="menu-vendedor" class="menu-vendedor balao-seta seta-cima" hidden role="menu">
+    <p class="menu-vendedor-titulo">Menu do vendedor</p>
+    <button type="button" id="btn-copiar-link" class="menu-vendedor-opcao" role="menuitem">📋 Copiar meu link</button>
+    <button type="button" id="btn-tour-vendedor" class="menu-vendedor-opcao" role="menuitem">🎓 Tutorial do vendedor</button>
+    <button type="button" id="btn-fechar-menu-vendedor" class="menu-vendedor-fechar">✕ Fechar</button>
+  </div>
+  <div id="aviso-vendedor" class="aviso-vendedor" role="status" aria-live="polite"></div>
 
   <div id="tour-bloqueio" class="tour-bloqueio" hidden></div>
   <div id="tour-destaque" class="tour-destaque" hidden></div>

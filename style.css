@@ -972,3 +972,129 @@ button { font-family: inherit; cursor: pointer; }
   font-weight: 700;
   font-size: 15px;
 }
+
+/* ============================================================
+   MENU DO VENDEDOR (segurar a foto 3 segundos) + tutorial do vendedor
+   ============================================================ */
+
+/* Segurar a foto não pode abrir o menu "Salvar imagem" do celular nem
+   selecionar texto */
+.vendedor-foto-wrap,
+.vendedor-foto-wrap img {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+/* Anel dourado que enche em 3 segundos enquanto segura a foto */
+.anel-segurar {
+  position: absolute;
+  inset: -6px;
+  width: calc(100% + 12px);
+  height: calc(100% + 12px);
+  transform: rotate(-90deg);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.anel-segurar circle {
+  fill: none;
+  stroke: var(--cor-dourada, #d4af37);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 151;
+  stroke-dashoffset: 151;
+}
+.vendedor-foto-wrap.segurando .anel-segurar { opacity: 1; }
+.vendedor-foto-wrap.segurando .anel-segurar circle {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 3s linear;
+}
+
+.menu-vendedor-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 8400;
+  background: rgba(10, 20, 35, 0.45);
+}
+.menu-vendedor-fundo[hidden], .menu-vendedor[hidden] { display: none; }
+
+.menu-vendedor {
+  position: fixed;
+  z-index: 8500;
+  width: 230px;
+  background: var(--cor-branco, #fff);
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.menu-vendedor-titulo {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cor-texto-suave, #6b6b76);
+}
+.menu-vendedor-opcao {
+  border: none;
+  border-radius: 10px;
+  padding: 12px;
+  text-align: left;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--cor-primaria, #0d2c4a);
+  background: var(--cor-fundo, #f4f4f6);
+  cursor: pointer;
+}
+.menu-vendedor-fechar {
+  border: none;
+  background: none;
+  padding: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cor-texto-suave, #6b6b76);
+  cursor: pointer;
+}
+
+/* Aviso rápido "Link copiado!" */
+.aviso-vendedor {
+  position: fixed;
+  left: 50%;
+  bottom: 110px;
+  z-index: 9500;
+  max-width: 88vw;
+  transform: translateX(-50%) translateY(16px);
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.35;
+  padding: 12px 18px;
+  border-radius: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms, transform 200ms;
+  overflow-wrap: anywhere;
+}
+.aviso-vendedor.mostrar {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Passo do tour sem item pra apontar (ex: "salvar na tela inicial"): só
+   escurece a tela, sem o anel dourado do recorte */
+.tour-destaque.sem-anel {
+  box-shadow: 0 0 0 9999px rgba(10, 20, 35, 0.72);
+}
+
+/* No passo do meio da tela não tem pra onde apontar: sem a setinha */
+.tour-caixa.sem-seta::before { display: none; }
+

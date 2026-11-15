@@ -2036,7 +2036,10 @@ function iniciarTourCarrinho() {
 function abrirTour(passos) {
   // Pula passos cujo item não existe na tela (ex: coleção sem produto,
   // carrinho vazio)
-  TOUR_PASSOS = passos.filter((p) => p.alvo());
+  TOUR_PASSOS = passos.filter((p) => {
+    const alvo = p.alvo();
+    return Array.isArray(alvo) ? alvo.length > 0 : !!alvo;
+  });
   if (TOUR_PASSOS.length === 0) return;
 
   TOUR_ATIVO = true;
@@ -2087,13 +2090,42 @@ function posicionarPassoTour() {
   const passo = TOUR_PASSOS[TOUR_PASSO];
   const el = passo.alvo();
   if (!el) return;
-  const r = el.getBoundingClientRect();
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const pad = 6;
+  const destaque = document.getElementById("tour-destaque");
+
+  // Passo sem item pra apontar: tela escurecida e balão no meio
+  if (passo.centro) {
+    destaque.classList.add("sem-anel");
+    Object.assign(destaque.style, { left: vw / 2 + "px", top: vh / 2 + "px", width: "0px", height: "0px" });
+    const balaoC = document.getElementById("tour-balao");
+    const caixaC = document.getElementById("tour-caixa");
+    const larguraC = Math.min(360, vw - 24);
+    balaoC.style.width = larguraC + "px";
+    caixaC.classList.remove("seta-cima", "seta-baixo");
+    caixaC.classList.add("sem-seta");
+    balaoC.style.left = (vw - larguraC) / 2 + "px";
+    balaoC.style.top = Math.max(10, (vh - balaoC.offsetHeight) / 2) + "px";
+    return;
+  }
+  destaque.classList.remove("sem-anel");
+  document.getElementById("tour-caixa").classList.remove("sem-seta");
+
+  // O alvo pode ser um item só ou uma lista (ex: botões PDF + Imagem juntos)
+  let r;
+  if (Array.isArray(el)) {
+    const rs = el.map((e) => e.getBoundingClientRect());
+    const left = Math.min(...rs.map((x) => x.left));
+    const top = Math.min(...rs.map((x) => x.top));
+    const right = Math.max(...rs.map((x) => x.right));
+    const bottom = Math.max(...rs.map((x) => x.bottom));
+    r = { left, top, right, bottom, width: right - left, height: bottom - top };
+  } else {
+    r = el.getBoundingClientRect();
+  }
 
   // Recorte iluminado em volta do item
-  const destaque = document.getElementById("tour-destaque");
   let dl, dt, dw, dh;
   if (passo.redondo) {
     const lado = Math.max(r.width, r.height) + pad * 2;
@@ -2143,8 +2175,9 @@ function iniciarTourGuiado() {
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); acao(); }
     });
   };
-  ligarFoto(document.getElementById("vendedor-foto-wrap"), iniciarTour);
+  ligarFotoComToqueEscondido(document.getElementById("vendedor-foto-wrap"));
   ligarFoto(document.getElementById("carrinho-foto-wrap"), iniciarTourCarrinho);
+  ligarMenuVendedor();
   // A foto do carrinho é a mesma do cabeçalho (já carregada a esta altura)
   copiarFotoVendedor(document.getElementById("carrinho-foto"));
   document.getElementById("tour-pular").addEventListener("click", encerrarTour);
@@ -2161,6 +2194,198 @@ function iniciarTourGuiado() {
   document.addEventListener("pointerdown", esconderDicaFoto, true);
 
   if (!tourLerStorage(CHAVE_DICA_FOTO)) setTimeout(mostrarDicaFoto, 900);
+}
+
+
+// ============================================================
+// MENU DO VENDEDOR (toque escondido) + TUTORIAL DO VENDEDOR
+// ============================================================
+// Ideia do Leonardo (14/11/2026): o link é o mesmo pra cliente e vendedor,
+// então o "modo vendedor" abre por um toque escondido: SEGURAR a foto do
+// vendedor por 3 segundos (um anel dourado vai enchendo). Abre um menu com
+// "Copiar meu link" (o vendedor não perde mais o próprio link) e
+// "Tutorial do vendedor". Toque rápido na foto continua abrindo o tour do
+// cliente. Soltou antes dos 3s (depois de um toque longo)? Não acontece nada.
+const TEMPO_SEGURAR_MS = 3000;
+const TOQUE_RAPIDO_MS = 600;
+
+function ligarFotoComToqueEscondido(foto) {
+  let timer = null;
+  let inicio = 0;
+  let abriuMenu = false;
+  let xIni = 0;
+  let yIni = 0;
+
+  const cancelar = () => {
+    clearTimeout(timer);
+    timer = null;
+    foto.classList.remove("segurando");
+  };
+
+  foto.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    abriuMenu = false;
+    inicio = Date.now();
+    xIni = e.clientX;
+    yIni = e.clientY;
+    foto.classList.add("segurando");
+    timer = setTimeout(() => {
+      timer = null;
+      abriuMenu = true;
+      foto.classList.remove("segurando");
+      try { if (navigator.vibrate) navigator.vibrate(40); } catch (erro) { /* sem vibração */ }
+      abrirMenuVendedor();
+    }, TEMPO_SEGURAR_MS);
+  });
+
+  // Arrastou o dedo (rolando a tela)? Cancela.
+  foto.addEventListener("pointermove", (e) => {
+    if (timer && Math.hypot(e.clientX - xIni, e.clientY - yIni) > 12) cancelar();
+  });
+
+  foto.addEventListener("pointerup", () => {
+    const foiRapido = timer && Date.now() - inicio < TOQUE_RAPIDO_MS;
+    cancelar();
+    if (foiRapido && !abriuMenu) iniciarTour();
+  });
+  foto.addEventListener("pointercancel", cancelar);
+  foto.addEventListener("pointerleave", () => { if (timer) cancelar(); });
+
+  // Segurar a foto não pode abrir o menu do navegador ("Salvar imagem" etc)
+  foto.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  // Teclado: Enter/espaço abre o tour do cliente
+  foto.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); iniciarTour(); }
+  });
+}
+
+function posicionarMenuVendedor() {
+  const menu = document.getElementById("menu-vendedor");
+  const r = document.getElementById("vendedor-foto-wrap").getBoundingClientRect();
+  const largura = menu.offsetWidth || 230;
+  const left = Math.min(Math.max(10, r.left - 4), window.innerWidth - largura - 10);
+  menu.style.left = left + "px";
+  menu.style.top = (r.bottom + 14) + "px";
+  menu.style.setProperty("--seta-x", (r.left + r.width / 2 - left) + "px");
+}
+
+function abrirMenuVendedor() {
+  esconderDicaFoto();
+  if (TOUR_ATIVO) return;
+  window.scrollTo(0, 0);
+  document.getElementById("menu-vendedor-fundo").hidden = false;
+  document.getElementById("menu-vendedor").hidden = false;
+  posicionarMenuVendedor();
+}
+
+function fecharMenuVendedor() {
+  document.getElementById("menu-vendedor-fundo").hidden = true;
+  document.getElementById("menu-vendedor").hidden = true;
+}
+
+let TIMER_AVISO_VENDEDOR = null;
+function mostrarAvisoVendedor(texto, ms = 2600) {
+  const aviso = document.getElementById("aviso-vendedor");
+  aviso.textContent = texto;
+  aviso.classList.add("mostrar");
+  clearTimeout(TIMER_AVISO_VENDEDOR);
+  TIMER_AVISO_VENDEDOR = setTimeout(() => aviso.classList.remove("mostrar"), ms);
+}
+
+// O link copiado é o MESMO link que o cliente usa (o link normal do
+// vendedor, com o ?v= dele) — não existe link especial de vendedor.
+function linkDoVendedor() {
+  return window.location.href.split("#")[0];
+}
+
+async function copiarLinkDoVendedor() {
+  const link = linkDoVendedor();
+  let copiou = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(link);
+      copiou = true;
+    }
+  } catch (erro) { /* tenta o jeito antigo abaixo */ }
+  if (!copiou) {
+    try {
+      const campo = document.createElement("textarea");
+      campo.value = link;
+      campo.setAttribute("readonly", "");
+      campo.style.position = "fixed";
+      campo.style.opacity = "0";
+      document.body.appendChild(campo);
+      campo.select();
+      copiou = document.execCommand("copy");
+      campo.remove();
+    } catch (erro) { copiou = false; }
+  }
+  fecharMenuVendedor();
+  if (copiou) {
+    mostrarAvisoVendedor("Link copiado! Agora é só colar no WhatsApp.");
+  } else {
+    // Celular não deixou copiar sozinho: mostra o link pra copiar à mão
+    mostrarAvisoVendedor("Seu link: " + link, 8000);
+  }
+}
+
+function eIphone() {
+  const ua = navigator.userAgent || "";
+  return /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+}
+
+// Os 6 passos do tutorial do vendedor — mesmos textos nos 5 catálogos
+// (aprovados pelo Leonardo em 14/11/2026).
+function montarPassosTourVendedor() {
+  const salvarTela = eIphone()
+    ? `No <b>Safari</b>, toque em <b>Compartilhar</b> (o quadradinho com a setinha ↑) e escolha <b>Adicionar à Tela de Início</b>. Assim seu catálogo fica no celular, com o ícone dele, e você nunca perde seu link!`
+    : `No navegador, toque nos <b>3 pontinhos ⋮</b> lá em cima e escolha <b>Adicionar à tela inicial</b> (ou <b>Instalar app</b>). Assim seu catálogo fica no celular, com o ícone dele, e você nunca perde seu link!`;
+  return [
+    {
+      alvo: () => document.getElementById("vendedor-foto-wrap"), redondo: true,
+      texto: () => `Oi, <b>${escaparHtml(primeiroNomeVendedor())}</b>! Este é o seu <b>modo vendedor</b>, com dicas só pra você. Seus clientes não veem isso.`,
+    },
+    {
+      alvo: () => [document.getElementById("btn-gerar-pdf"), document.getElementById("btn-gerar-png")]
+        .map((b) => b && b.closest(".acao-cabecalho")).filter(Boolean),
+      texto: () => `Escolha os produtos que quer oferecer e toque em <b>PDF</b> ou <b>Imagem</b>. Sai pronto, com a sua foto e os preços, pra mandar aos clientes. A <b>Imagem</b> cabe até <b>16 produtos</b>; no <b>PDF</b> você coloca quantos quiser.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-ir-carrinho"), botaoCarrinho: true,
+      texto: () => `Tem cliente que faz o pedido pelo <b>computador</b> e não tem o WhatsApp aberto ali? Oriente ele a usar o botão <b>PDF do pedido</b>, dentro do carrinho: ele baixa o pedido e te manda por onde for mais fácil.`,
+    },
+    {
+      alvo: () => document.getElementById("vendedor-foto-wrap"), redondo: true,
+      texto: () => `Sempre que precisar do seu link, <b>segure a sua foto</b> e toque em <b>Copiar meu link</b>. Aí é só colar no WhatsApp.`,
+    },
+    {
+      alvo: () => document.body, centro: true,
+      texto: () => salvarTela,
+    },
+    {
+      alvo: () => document.getElementById("vendedor-foto-wrap"), redondo: true,
+      texto: () => `Seus clientes aprendem a usar o catálogo <b>tocando na sua foto</b>. Avise eles!`,
+    },
+  ];
+}
+
+function iniciarTourVendedor() {
+  fecharMenuVendedor();
+  if (TOUR_ATIVO) return;
+  if (BUSCA || !document.getElementById("barra-busca").hidden) fecharBusca();
+  window.scrollTo(0, 0);
+  abrirTour(montarPassosTourVendedor());
+}
+
+function ligarMenuVendedor() {
+  document.getElementById("btn-copiar-link").addEventListener("click", copiarLinkDoVendedor);
+  document.getElementById("btn-tour-vendedor").addEventListener("click", iniciarTourVendedor);
+  document.getElementById("btn-fechar-menu-vendedor").addEventListener("click", fecharMenuVendedor);
+  document.getElementById("menu-vendedor-fundo").addEventListener("click", fecharMenuVendedor);
+  window.addEventListener("resize", () => {
+    if (!document.getElementById("menu-vendedor").hidden) posicionarMenuVendedor();
+  });
 }
 
 document.addEventListener("DOMContentLoaded", iniciar);
