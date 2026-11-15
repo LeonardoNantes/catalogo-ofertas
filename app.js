@@ -65,8 +65,12 @@ function pegarSlugDaUrl() {
 // Leonardo ver depois quais vendedores usam mais essa ferramenta. Não
 // trava a navegação se falhar.
 async function registrarVisita(slug) {
+  // O registro agora passa por uma função no servidor (api/registrar-acesso),
+  // que lê o IP real de quem acessou - o navegador não insere mais direto
+  // no Supabase. O IP ajuda, mais pra frente, a tentar diferenciar o
+  // próprio vendedor dos clientes dele nos acessos.
   try {
-    await getClient().from("ofertas_visualizacoes").insert({ vendedor_slug: slug });
+    await fetch(`/api/registrar-acesso?v=${encodeURIComponent(slug)}`);
   } catch (erro) {
     console.error("[Ofertas da Semana] Não consegui registrar a visita:", erro);
   }
