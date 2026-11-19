@@ -108,32 +108,66 @@ async function buscarTudoPaginado(montarConsulta) {
   return todasLinhas;
 }
 
-// Pega a semana mais recente já publicada pra essa área, e todos os itens
-// dela (o "Complemento" pode ter somado itens ao longo da semana — aqui
-// pega tudo que estiver publicado nessa semana_inicio).
+// Categorias cadastradas pra essa área (tabela "ofertas_categorias", a
+// mesma usada no Painel de Preços) — dá pra saber quais categorias são de
+// Martins e quais são de Parceiros (ver grupoDaCategoria, mais abaixo) sem
+// precisar buscar nenhum item ainda.
+async function buscarCategoriasDaArea(area) {
+  const { data, error } = await getClient().from("ofertas_categorias").select("nome").eq("area", area);
+  if (error) throw error;
+  return (data || []).map((r) => r.nome);
+}
+
+// Pega a semana mais recente já publicada pra essa área, SEPARADA POR
+// GRUPO (Martins e Parceiros, cada um com sua própria data — ver
+// grupoDaCategoria mais abaixo), e junta os itens dos 2 grupos numa lista
+// só (o "Complemento" pode ter somado itens ao longo da semana — por isso
+// busca tudo que estiver publicado na semana_inicio de cada grupo, não só
+// o mais recente). Antes disso olhava só a data mais recente da área
+// inteira, o que fazia os itens de Parceiros desaparecerem (tanto daqui
+// quanto do Painel de Preços) sempre que o Martins tivesse uma data mais
+// nova — mesmo os itens de Parceiros continuando intactos no banco. A
+// partir de 19/11/2026 as 2 caixas do Painel de Preços são independentes
+// (uma só pra Martins, outra só pra Parceiros), então aqui também precisa
+// juntar as 2 "levas" em vez de olhar só pra 1 data.
 async function buscarOfertaAtual(area) {
-  const { data: semanas, error: erroSemanas } = await getClient()
-    .from("ofertas_semana")
-    .select("semana_inicio, semana_fim")
-    .eq("area", area)
-    .order("semana_inicio", { ascending: false })
-    .limit(1);
-  if (erroSemanas) throw erroSemanas;
-  if (!semanas || semanas.length === 0) return { itens: [], semanaInicio: null, semanaFim: null };
+  const categoriasDaArea = await buscarCategoriasDaArea(area);
 
-  const { semana_inicio, semana_fim } = semanas[0];
-  const itens = await buscarTudoPaginado(() =>
-    getClient()
+  let todosItens = [];
+  const periodoPorGrupo = {};
+
+  for (const grupo of ["martins", "parceiros"]) {
+    const categoriasDoGrupoAtual = categoriasDaArea.filter((c) => grupoDaCategoria(c) === grupo);
+    if (categoriasDoGrupoAtual.length === 0) continue; // área sem nenhuma categoria desse grupo
+
+    const { data: semanas, error: erroSemanas } = await getClient()
       .from("ofertas_semana")
-      .select("codigo, codigo_barras, descricao, categoria, preco, ordem")
+      .select("semana_inicio, semana_fim")
       .eq("area", area)
-      .eq("semana_inicio", semana_inicio)
-      .order("ordem", { ascending: true })
-  );
+      .in("categoria", categoriasDoGrupoAtual)
+      .order("semana_inicio", { ascending: false })
+      .limit(1);
+    if (erroSemanas) throw erroSemanas;
+    if (!semanas || semanas.length === 0) continue;
 
-  const itensComFoto = await anexarFotosDosProdutos(itens);
+    const { semana_inicio, semana_fim } = semanas[0];
+    periodoPorGrupo[grupo] = { semanaInicio: semana_inicio, semanaFim: semana_fim };
 
-  return { itens: itensComFoto, semanaInicio: semana_inicio, semanaFim: semana_fim };
+    const itensDoGrupo = await buscarTudoPaginado(() =>
+      getClient()
+        .from("ofertas_semana")
+        .select("codigo, codigo_barras, descricao, categoria, preco, ordem")
+        .eq("area", area)
+        .in("categoria", categoriasDoGrupoAtual)
+        .eq("semana_inicio", semana_inicio)
+        .order("ordem", { ascending: true })
+    );
+    todosItens = todosItens.concat(itensDoGrupo);
+  }
+
+  const itensComFoto = await anexarFotosDosProdutos(todosItens);
+
+  return { itens: itensComFoto, periodoPorGrupo };
 }
 
 // Produtos que já tiverem foto cadastrada (banco de fotos, por código
@@ -1844,11 +1878,27 @@ async function iniciar() {
   {
     // Na tela mostra só os dias, pra caber bem na barra em celulares pequenos.
     // No PDF/Imagem gerados continua saindo o texto completo de sempre.
-    const dataInicio = formatarDataCurta(oferta.semanaInicio);
-    const dataFim = formatarDataCurta(oferta.semanaFim);
+    // Martins e Parceiros agora podem ter datas diferentes (cada um é
+    // atualizado na sua própria caixa no Painel de Preços) — quando as 2
+    // datas não coincidem, mostra as duas separadas (pedido do Leonardo em
+    // 19/11/2026), em vez de mostrar só a do Martins e esconder a do
+    // Parceiros.
+    const periodos = oferta.periodoPorGrupo || {};
+    const pMartins = periodos.martins;
+    const pParceiros = periodos.parceiros;
+    const textoPeriodo = (p) => `${formatarDataCurta(p.semanaInicio)} a ${formatarDataCurta(p.semanaFim)}`;
+    const mesmaData =
+      pMartins && pParceiros && pMartins.semanaInicio === pParceiros.semanaInicio && pMartins.semanaFim === pParceiros.semanaFim;
+
     const elTextoSemana = document.getElementById("texto-semana");
-    elTextoSemana.textContent = `${dataInicio} a ${dataFim}`;
-    elTextoSemana.dataset.completo = `Ofertas de ${dataInicio} a ${dataFim}`;
+    if (pMartins && pParceiros && !mesmaData) {
+      elTextoSemana.textContent = `Martins: ${textoPeriodo(pMartins)} · Parceiros: ${textoPeriodo(pParceiros)}`;
+      elTextoSemana.dataset.completo = `Martins: ofertas de ${textoPeriodo(pMartins)} · Parceiros: ofertas de ${textoPeriodo(pParceiros)}`;
+    } else {
+      const p = pMartins || pParceiros;
+      elTextoSemana.textContent = p ? textoPeriodo(p) : "";
+      elTextoSemana.dataset.completo = p ? `Ofertas de ${textoPeriodo(p)}` : "";
+    }
   }
 
   carregarItensMarcados();

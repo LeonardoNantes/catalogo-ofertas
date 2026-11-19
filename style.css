@@ -158,7 +158,13 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 10.5px;
   font-weight: 600;
   opacity: 0.92;
-  white-space: nowrap;
+  line-height: 1.25;
+  /* Quando Martins e Parceiros têm datas diferentes, o texto mostra as 2
+     ("Martins: ... · Parceiros: ...") e pode não caber numa linha só em
+     telas estreitas — deixa quebrar pra 2 linhas em vez de cortar com "…"
+     e esconder a data de um dos grupos. No caso comum (datas iguais, texto
+     curto) continua numa linha só, sem mudar nada visualmente. */
+  white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
 }
