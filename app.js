@@ -194,13 +194,18 @@ function formatarDataCurta(dataISO) {
 }
 
 function formatarPreco(valor) {
-  return "R$ " + Number(valor).toFixed(2).replace(".", ",");
+  return "R$ " + formatarPrecoSemPrefixo(valor);
 }
 
 // Só o número, sem o "R$" na frente — usado nos cartões do PNG/PDF, onde
 // o "R$" já aparece separado, como um rótulo pequeno em cima do preço.
+// Usa toLocaleString pt-BR pra sempre vir com separador de milhar (ponto)
+// e vírgula decimal — ex: 2343.34 -> "2.343,34" (antes ficava "2343,34").
 function formatarPrecoSemPrefixo(valor) {
-  return Number(valor).toFixed(2).replace(".", ",");
+  return Number(valor).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 // ---------------- MINIATURA DA FOTO (lista de produtos) ----------------
