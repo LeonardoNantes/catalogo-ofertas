@@ -1,718 +1,1933 @@
 // ============================================================
-// PAINEL DE PREÇOS — lógica
+// OFERTAS DA SEMANA — página do cliente final
 // ============================================================
-// Ideia geral: existe uma área "base" (SC), que tem todos os produtos e
-// coleções cadastrados. Cada área nova (PR - Fláviano, por exemplo) começa
-// sem nenhuma linha própria — ao digitar um preço pra ela, a gente cria
-// (ou atualiza) a linha daquela área, copiando o resto dos dados (nome,
-// coleção, fração, foto...) da área base. Por isso o preço "some" até
-// alguém digitar um valor pra aquela área. O mesmo vale pro botão
-// Visível/Oculto: cada área tem seu próprio estado, então ocultar um item
-// numa área não afeta as outras.
+// Um site só pra todos os vendedores — sem repositório por pessoa. O
+// vendedor é identificado pelo parâmetro "v" na URL (o slug cadastrado no
+// Painel de Vendedores, na marca "Ofertas da Semana"); os dados dele
+// (nome, foto, WhatsApp, área) vêm do Supabase na hora que a página abre.
 
-// Antes, as marcas ficavam fixas aqui no código. Agora elas vêm da tabela
-// "catalogos" no Supabase (ver carregarCatalogos()) — cadastrar uma marca
-// nova lá já faz ela aparecer sozinha como aba aqui, sem editar este arquivo.
-let MARCAS = {};
-let CATALOGOS_ORDENADOS = [];
+// ---------------- CATEGORIAS: cor e ícone ----------------
+const CATEGORIAS_INFO = {
+  "Limpeza": { bg: "#E3EFEA", fg: "#0E6B54" },
+  "Mercearia": { bg: "#FBEAE0", fg: "#8C3115" },
+  "Higiene & Beleza": { bg: "#EFE8F5", fg: "#6B4D9E" },
+  "Bebidas": { bg: "#E1EEF9", fg: "#1B5E8C" },
+  "Bomboniere": { bg: "#FCE7EF", fg: "#A33566" },
+  "Brinquedos & Bazar": { bg: "#FFF4D9", fg: "#96660A" },
+  "Eletro & Utilidades": { bg: "#E9E8F5", fg: "#4C4791" },
+  "Material de Construção": { bg: "#F2ECDD", fg: "#7A5C1E" },
+  "Papelaria": { bg: "#EAF2E1", fg: "#4C7A1F" },
+  "Outros": { bg: "#ECECEA", fg: "#5E5D59" },
+};
+const ORDEM_CATEGORIAS = Object.keys(CATEGORIAS_INFO);
 
-let supabaseClient = null;
+function infoCategoria(categoria) {
+  return CATEGORIAS_INFO[categoria] || CATEGORIAS_INFO["Outros"];
+}
+
+function iconeCategoria(categoria, cor) {
+  const icones = {
+    "Limpeza": `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="14" r="6"></circle><circle cx="16" cy="9" r="4"></circle></svg>`,
+    "Mercearia": `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h16l-1.5 9a2 2 0 0 1-2 1.7H7.5a2 2 0 0 1-2-1.7L4 9z"></path><path d="M8 9a4 4 0 0 1 8 0"></path></svg>`,
+    "Higiene & Beleza": `<svg width="24" height="24" viewBox="0 0 24 24" fill="${cor}"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"></path></svg>`,
+    "Bebidas": `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h10l-1.2 15a2 2 0 0 1-2 1.8h-3.6a2 2 0 0 1-2-1.8L7 3z"></path><path d="M6 3h12"></path></svg>`,
+    "Bomboniere": `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12a4 4 0 1 1 8 0 4 4 0 0 1-8 0z"></path><path d="M2 6l6 6-6 6M22 6l-6 6 6 6"></path></svg>`,
+    "Brinquedos & Bazar": `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"></rect><path d="M4 8l2-4h12l2 4"></path><path d="M12 8v12"></path></svg>`,
+    "Eletro & Utilidades": `<svg width="24" height="24" viewBox="0 0 24 24" fill="${cor}"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"></path></svg>`,
+    "Material de Construção": `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.1-3.1a5 5 0 0 1-6.6 6.6L5.6 21.4a2 2 0 0 1-2.8-2.8L12.2 9.2a5 5 0 0 1 6.6-6.6l-3.1 3.1z"></path></svg>`,
+    "Papelaria": `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"></path></svg>`,
+  };
+  return icones[categoria] || `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+}
+
+// ---------------- SUPABASE ----------------
+let _client = null;
 function getClient() {
-  if (supabaseClient) return supabaseClient;
-  if (!window.supabase || !window.supabase.createClient) {
-    throw new Error("Não consegui carregar a conexão com o Supabase. Verifique sua internet e recarregue a página.");
-  }
-  supabaseClient = window.supabase.createClient(CONFIG.supabase.url, CONFIG.supabase.anonKey);
-  return supabaseClient;
+  if (_client) return _client;
+  _client = window.supabase.createClient(CONFIG.supabase.url, CONFIG.supabase.anonKey);
+  return _client;
 }
 
-let MEU_ACESSO = null; // { nome, area } — area null = administrador
-let SOU_ADMIN = false;
-let AREA_SELECIONADA = CONFIG.areaBase;
-let MARCA_ATUAL = null; // definido em carregarCatalogos(), com a 1ª marca ativa
-let CACHE_MASTER = {}; // por marca: linhas da área base
-let AREAS_CONHECIDAS = [];
+// ---------------- TROCA DE TELA ----------------
+// "tela-carrinho" entrou nessa lista junto com o carrinho novo — abrir o
+// carrinho é só mais um estado de tela, igual às outras (some o "app" e
+// mostra o carrinho; voltar faz o caminho contrário).
+const ESTADOS = ["tela-carregando", "tela-erro", "tela-pausado", "tela-vazio", "app", "tela-carrinho"];
+function mostrarEstado(id) {
+  ESTADOS.forEach((e) => { document.getElementById(e).hidden = e !== id; });
+}
 
-const telaLogin = document.getElementById("tela-login");
-const appEl = document.getElementById("app");
+function pegarSlugDaUrl() {
+  return new URLSearchParams(window.location.search).get("v");
+}
 
-// ---------------- LOGIN ----------------
-document.getElementById("btn-entrar").addEventListener("click", tentarLogin);
-["input-email", "input-senha"].forEach((id) => {
-  document.getElementById(id).addEventListener("keydown", (e) => {
-    if (e.key === "Enter") tentarLogin();
-  });
-});
-
-async function tentarLogin() {
-  const erroEl = document.getElementById("erro-login");
-  erroEl.hidden = true;
-  const email = document.getElementById("input-email").value.trim();
-  const senha = document.getElementById("input-senha").value;
-
-  if (!email || !senha) {
-    erroEl.textContent = "Preencha e-mail e senha.";
-    erroEl.hidden = false;
-    return;
-  }
-
+// Grava uma linha toda vez que o link é aberto — é o que permite o
+// Leonardo ver depois quais vendedores usam mais essa ferramenta. Não
+// trava a navegação se falhar.
+async function registrarVisita(slug) {
+  // O registro agora passa por uma função no servidor (api/registrar-acesso),
+  // que lê o IP real de quem acessou - o navegador não insere mais direto
+  // no Supabase. O IP ajuda, mais pra frente, a tentar diferenciar o
+  // próprio vendedor dos clientes dele nos acessos.
   try {
-    const { error } = await getClient().auth.signInWithPassword({ email, password: senha });
-    if (error) {
-      erroEl.textContent = "E-mail ou senha incorretos.";
-      erroEl.hidden = false;
-      return;
-    }
-  } catch (erroConexao) {
-    erroEl.textContent = erroConexao.message;
-    erroEl.hidden = false;
-    return;
+    await fetch(`/api/registrar-acesso?v=${encodeURIComponent(slug)}`);
+  } catch (erro) {
+    console.error("[Ofertas da Semana] Não consegui registrar a visita:", erro);
   }
-
-  await iniciarAposLogin();
 }
 
-document.getElementById("btn-sair").addEventListener("click", async () => {
-  await getClient().auth.signOut();
-  location.reload();
-});
-
-// ---------------- INÍCIO (login já feito ou sessão salva) ----------------
-async function iniciarAposLogin() {
-  const erroEl = document.getElementById("erro-login");
-
-  const { data: sessionData } = await getClient().auth.getSession();
-  const usuario = sessionData?.session?.user;
-  if (!usuario) return; // continua na tela de login
-
-  const { data: acesso, error } = await getClient()
-    .from("acessos_precos")
-    .select("nome, area")
-    .eq("user_id", usuario.id)
+async function buscarVendedor(slug) {
+  const { data, error } = await getClient()
+    .from("vendedores")
+    .select("nome, area, whatsapp, foto_url, ativo")
+    .eq("slug", slug)
+    .eq("marca", "Ofertas da Semana")
     .maybeSingle();
-
-  if (error || !acesso) {
-    erroEl.textContent = "Seu login não tem uma área liberada ainda. Fale com o administrador.";
-    erroEl.hidden = false;
-    await getClient().auth.signOut();
-    return;
-  }
-
-  MEU_ACESSO = acesso;
-  SOU_ADMIN = MEU_ACESSO.area === null;
-  telaLogin.hidden = true;
-  appEl.hidden = false;
-
-  const souAdmin = SOU_ADMIN;
-  document.getElementById("texto-usuario").textContent = souAdmin
-    ? `${MEU_ACESSO.nome} · Administrador (todas as áreas)`
-    : `${MEU_ACESSO.nome} · Área: ${MEU_ACESSO.area}`;
-
-  document.getElementById("bloco-acessos").hidden = !souAdmin;
-
-  if (souAdmin) {
-    AREA_SELECIONADA = CONFIG.areaBase;
-    document.getElementById("label-area-select").hidden = false;
-    document.getElementById("label-area-nova").hidden = false;
-    await carregarAreasConhecidas();
-    carregarListaAcessos();
-  } else {
-    AREA_SELECIONADA = MEU_ACESSO.area;
-    document.getElementById("texto-area-fixa").hidden = false;
-    document.getElementById("texto-area-fixa").textContent = `Área: ${MEU_ACESSO.area}`;
-  }
-
-  await carregarCatalogos();
-  await carregarPrecosDaMarcaAtual();
+  if (error) throw error;
+  return data;
 }
 
-// Se a sessão já estava salva no navegador, entra direto sem pedir senha de novo.
-(async () => {
-  try {
-    await iniciarAposLogin();
-  } catch (erro) {
-    console.error("[Painel de Preços] Erro ao iniciar:", erro);
-  }
-})();
-
-// ---------------- SELETOR DE ÁREA (admin) ----------------
-async function carregarAreasConhecidas() {
-  const select = document.getElementById("select-area");
-  let areas = [CONFIG.areaBase];
-  try {
-    const { data } = await getClient().from("vendedores").select("area");
-    if (data) {
-      const extras = data.map((v) => v.area).filter(Boolean);
-      areas = Array.from(new Set([...areas, ...extras]));
-    }
-  } catch (erro) {
-    // Se não conseguir, segue só com a área base.
-  }
-  areas.sort((a, b) => a.localeCompare(b, "pt-BR"));
-  AREAS_CONHECIDAS = areas;
-
-  select.innerHTML = areas.map((a) => `<option value="${escapeAttr(a)}">${escapeHtml(a)}</option>`).join("");
-  select.value = AREA_SELECIONADA;
-}
-
-document.getElementById("select-area").addEventListener("change", async (e) => {
-  AREA_SELECIONADA = e.target.value;
-  await carregarPrecosDaMarcaAtual();
-});
-
-document.getElementById("btn-usar-area-nova").addEventListener("click", async () => {
-  const input = document.getElementById("input-area-nova");
-  const valor = input.value.trim();
-  if (!valor) return;
-
-  if (!AREAS_CONHECIDAS.includes(valor)) {
-    AREAS_CONHECIDAS.push(valor);
-    AREAS_CONHECIDAS.sort((a, b) => a.localeCompare(b, "pt-BR"));
-    const select = document.getElementById("select-area");
-    select.innerHTML = AREAS_CONHECIDAS.map(
-      (a) => `<option value="${escapeAttr(a)}">${escapeHtml(a)}</option>`
-    ).join("");
-  }
-  document.getElementById("select-area").value = valor;
-  input.value = "";
-  AREA_SELECIONADA = valor;
-  await carregarPrecosDaMarcaAtual();
-});
-
-// ---------------- ABAS DE MARCA (vem da tabela "catalogos") ----------------
-async function carregarCatalogos() {
-  try {
-    const { data, error } = await getClient()
-      .from("catalogos")
-      .select("marca, tabela, tipo_precificacao, ordenar_por")
-      .eq("ativo", true)
-      .order("ordem", { ascending: true });
+// A API do Supabase nunca devolve mais que 1000 linhas numa consulta só,
+// mesmo sem pedir — acima disso, o resto some em silêncio, sem erro nenhum.
+// Essa função busca em "páginas" de 1000 até não sobrar mais nada, pra uma
+// semana com mais de 1000 itens (como já aconteceu) vir completa.
+async function buscarTudoPaginado(montarConsulta) {
+  const TAMANHO_PAGINA = 1000;
+  let todasLinhas = [];
+  let pagina = 0;
+  while (true) {
+    const inicio = pagina * TAMANHO_PAGINA;
+    const fim = inicio + TAMANHO_PAGINA - 1;
+    const { data, error } = await montarConsulta().range(inicio, fim);
     if (error) throw error;
-    if (!data || data.length === 0) throw new Error("Nenhum catálogo ativo encontrado.");
+    const linhas = data || [];
+    todasLinhas = todasLinhas.concat(linhas);
+    if (linhas.length < TAMANHO_PAGINA) break;
+    pagina++;
+  }
+  return todasLinhas;
+}
 
-    MARCAS = {};
-    data.forEach((c) => {
-      MARCAS[c.marca] = {
-        tabela: c.tabela,
-        tipo: c.tipo_precificacao,
-        ordenarPor: c.ordenar_por,
-      };
-    });
-    CATALOGOS_ORDENADOS = data.map((c) => c.marca);
-  } catch (erroConexao) {
-    console.error("[Painel de Preços] Não consegui carregar a tabela de catálogos:", erroConexao);
-    // Sem a tabela "catalogos" (ex: antes de rodar a migração), continua
-    // funcionando com as 3 marcas de sempre, pra não travar o painel.
-    MARCAS = {
-      Havaianas: { tabela: "havaianas", tipo: "colecao", ordenarPor: [["segmento", true], ["colecao", true], ["ordem", true]] },
-      Impala: { tabela: "impala", tipo: "codigo", ordenarPor: [["colecao", true], ["descricao", true]] },
-      Nadir: { tabela: "nadir", tipo: "codigo", ordenarPor: [["colecao", true], ["ordem", true]] },
-    };
-    CATALOGOS_ORDENADOS = ["Havaianas", "Impala", "Nadir"];
+// Categorias cadastradas pra essa área (tabela "ofertas_categorias", a
+// mesma usada no Painel de Preços) — dá pra saber quais categorias são de
+// Martins e quais são de Parceiros (ver grupoDaCategoria, mais abaixo) sem
+// precisar buscar nenhum item ainda.
+async function buscarCategoriasDaArea(area) {
+  const { data, error } = await getClient().from("ofertas_categorias").select("nome").eq("area", area);
+  if (error) throw error;
+  return (data || []).map((r) => r.nome);
+}
+
+// Pega a semana mais recente já publicada pra essa área, SEPARADA POR
+// GRUPO (Martins e Parceiros, cada um com sua própria data — ver
+// grupoDaCategoria mais abaixo), e junta os itens dos 2 grupos numa lista
+// só (o "Complemento" pode ter somado itens ao longo da semana — por isso
+// busca tudo que estiver publicado na semana_inicio de cada grupo, não só
+// o mais recente). Antes disso olhava só a data mais recente da área
+// inteira, o que fazia os itens de Parceiros desaparecerem (tanto daqui
+// quanto do Painel de Preços) sempre que o Martins tivesse uma data mais
+// nova — mesmo os itens de Parceiros continuando intactos no banco. A
+// partir de 19/11/2026 as 2 caixas do Painel de Preços são independentes
+// (uma só pra Martins, outra só pra Parceiros), então aqui também precisa
+// juntar as 2 "levas" em vez de olhar só pra 1 data.
+async function buscarOfertaAtual(area) {
+  const categoriasDaArea = await buscarCategoriasDaArea(area);
+
+  let todosItens = [];
+  const periodoPorGrupo = {};
+
+  for (const grupo of ["martins", "parceiros"]) {
+    const categoriasDoGrupoAtual = categoriasDaArea.filter((c) => grupoDaCategoria(c) === grupo);
+    if (categoriasDoGrupoAtual.length === 0) continue; // área sem nenhuma categoria desse grupo
+
+    const { data: semanas, error: erroSemanas } = await getClient()
+      .from("ofertas_semana")
+      .select("semana_inicio, semana_fim")
+      .eq("area", area)
+      .in("categoria", categoriasDoGrupoAtual)
+      .order("semana_inicio", { ascending: false })
+      .limit(1);
+    if (erroSemanas) throw erroSemanas;
+    if (!semanas || semanas.length === 0) continue;
+
+    const { semana_inicio, semana_fim } = semanas[0];
+    periodoPorGrupo[grupo] = { semanaInicio: semana_inicio, semanaFim: semana_fim };
+
+    const itensDoGrupo = await buscarTudoPaginado(() =>
+      getClient()
+        .from("ofertas_semana")
+        .select("codigo, codigo_barras, descricao, categoria, preco, ordem")
+        .eq("area", area)
+        .in("categoria", categoriasDoGrupoAtual)
+        .eq("semana_inicio", semana_inicio)
+        .order("ordem", { ascending: true })
+    );
+    todosItens = todosItens.concat(itensDoGrupo);
   }
 
-  if (!MARCA_ATUAL || !MARCAS[MARCA_ATUAL]) {
-    MARCA_ATUAL = CATALOGOS_ORDENADOS[0];
+  const itensComFoto = await anexarFotosDosProdutos(todosItens);
+
+  return { itens: itensComFoto, periodoPorGrupo };
+}
+
+// Produtos que já tiverem foto cadastrada (banco de fotos, por código
+// Martins) mostram a foto de verdade no lugar do ícone da categoria.
+async function anexarFotosDosProdutos(itens) {
+  if (itens.length === 0) return itens;
+  try {
+    const codigos = itens.map((i) => i.codigo);
+    const data = await buscarTudoPaginado(() =>
+      getClient().from("ofertas_fotos").select("codigo, foto_url").in("codigo", codigos)
+    );
+    const fotoPorCodigo = new Map(data.map((f) => [f.codigo, f.foto_url]));
+    return itens.map((item) => ({ ...item, foto_url: fotoPorCodigo.get(item.codigo) || null }));
+  } catch (erro) {
+    console.error("[Ofertas da Semana] Não consegui buscar as fotos dos produtos:", erro);
+    return itens;
   }
+}
 
-  const container = document.getElementById("filtros-marca");
-  container.innerHTML = CATALOGOS_ORDENADOS.map(
-    (marca) =>
-      `<button class="filtro-marca${marca === MARCA_ATUAL ? " ativo" : ""}" data-marca="${escapeAttr(marca)}">${escapeHtml(marca)}</button>`
-  ).join("");
+function formatarDataCurta(dataISO) {
+  if (!dataISO) return "";
+  const [, mes, dia] = dataISO.split("-");
+  return `${dia}/${mes}`;
+}
 
-  container.querySelectorAll(".filtro-marca").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      container.querySelectorAll(".filtro-marca").forEach((b) => b.classList.remove("ativo"));
-      btn.classList.add("ativo");
-      MARCA_ATUAL = btn.dataset.marca;
-      await carregarPrecosDaMarcaAtual();
-    });
+function formatarPreco(valor) {
+  return "R$ " + formatarPrecoSemPrefixo(valor);
+}
+
+// Só o número, sem o "R$" na frente — usado nos cartões do PNG/PDF, onde
+// o "R$" já aparece separado, como um rótulo pequeno em cima do preço.
+// Usa toLocaleString pt-BR pra sempre vir com separador de milhar (ponto)
+// e vírgula decimal — ex: 2343.34 -> "2.343,34" (antes ficava "2343,34").
+function formatarPrecoSemPrefixo(valor) {
+  return Number(valor).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }
 
-// ---------------- CARREGAR E MOSTRAR PREÇOS ----------------
-async function carregarPrecosDaMarcaAtual() {
-  const lista = document.getElementById("lista-precos");
-  lista.innerHTML = '<p class="carregando">Carregando preços…</p>';
+// ---------------- MINIATURA DA FOTO (lista de produtos) ----------------
+// A lista de produtos mostra a foto bem pequena (60px), mas a foto
+// original salva é grande (pra não perder qualidade no PDF/Imagem/zoom,
+// que continuam usando a foto original de verdade, sem nenhuma mudança).
+// Uma cópia pequena ("miniatura") de cada foto é gerada à parte e salva
+// no mesmo lugar, só trocando o final do nome do arquivo por "-thumb.jpg"
+// — então dá pra calcular a URL da miniatura sem precisar perguntar nada
+// ao banco. Se a miniatura ainda não existir (foto muito nova, ainda não
+// processada), o navegador cai sozinho pra foto original (ver o
+// "error" tratado depois de desenhar a lista, mais abaixo).
+function urlMiniatura(fotoUrl) {
+  if (!fotoUrl) return fotoUrl;
+  return fotoUrl.replace(/\.(jpe?g|png)$/i, "-thumb.jpg");
+}
 
-  const config = MARCAS[MARCA_ATUAL];
+// ---------------- TÍTULO DO PRÉ-PEDIDO (PDF do pré-pedido e mensagem de WhatsApp) ----------------
+// Por padrão, cada um usa seu próprio texto de sempre (recebido como
+// parâmetro `padrao` em cada chamada). Áreas listadas aqui usam, nos dois
+// lugares, esse texto fixo no lugar do padrão — pensado pra ofertas
+// exclusivas de uma área específica (ex: Cernutti), onde o título já deixa
+// claro de quem é aquela oferta.
+const TITULO_PRE_PEDIDO_POR_AREA = {
+  // A chave precisa bater exatamente (maiúsculas incluídas) com o valor da
+  // coluna `area` do vendedor no banco — a área real do Leonardo está
+  // cadastrada como "CERNUTTI" (tudo maiúsculo), não "Cernutti".
+  CERNUTTI: "Pré-pedido — Cernutti - FOB",
+};
+function tituloPrePedido(padrao) {
+  return TITULO_PRE_PEDIDO_POR_AREA[AREA_VENDEDOR] || padrao;
+}
 
+// ---------------- QUANTIDADE DIGITÁVEL POR ÁREA ----------------
+// Por padrão, a quantidade de cada item só muda clicando nos botões − e +
+// (um de cada vez). Áreas listadas aqui também podem digitar o número
+// direto no campo — pensado pra cliente que compra em volume (ex: Cernutti,
+// onde clicar "+" 50 vezes pra comprar 50 caixas de um item não é viável).
+const AREAS_QUANTIDADE_DIGITAVEL = [
+  // Mesmo cuidado de grafia do mapa acima: precisa bater exatamente com o
+  // valor da coluna `area` do vendedor ("CERNUTTI", tudo maiúsculo).
+  "CERNUTTI",
+];
+function areaUsaQuantidadeDigitavel(area) {
+  return AREAS_QUANTIDADE_DIGITAVEL.includes(area);
+}
+// O campo usa type="text" (com inputmode="numeric" pra abrir o teclado
+// numérico no celular) em vez de type="number" de propósito: no Chrome,
+// um campo type="number" não permite selecionar/posicionar o texto por
+// código (selectionStart/select() não funcionam nele), o que quebra o
+// "selecionar tudo ao clicar" mais abaixo. Os caracteres não numéricos são
+// filtrados manualmente (ver listener "input"), então não precisa do
+// type="number" pra isso.
+
+// Define a quantidade de um item pro valor exato digitado (em vez de somar/
+// subtrair 1, como inc()/dec()) — usado pelo campo digitável acima. Texto
+// vazio, "0" ou qualquer coisa não numérica conta como 0 (remove o
+// interesse, igual já acontece ao clicar "−" até chegar em 0).
+function definirQuantidade(codigo, valorDigitado) {
+  const numero = Math.max(0, parseInt(valorDigitado, 10) || 0);
+  QTY.set(codigo, numero);
+  aposMudarItens();
+}
+
+// ---------------- ESTADO DA PÁGINA (interesse / quantidade) ----------------
+const QTY = new Map(); // codigo -> quantidade
+let TODOS_ITENS = [];
+let CATEGORIA_ATIVA = null; // não existe mais aba "Todos" — definida em iniciar() pra primeira categoria com item
+let GRUPO_ATIVO = "martins"; // "martins" ou "parceiros" — definido em iniciar()
+let ORDEM_PRECO = ""; // "" = padrão, "menor" ou "maior" — só vale pra aba aberta
+let BUSCA = ""; // texto da busca (lupa) — já normalizado, vazio = sem busca
+let VENDEDOR_WHATSAPP = null;
+let AREA_VENDEDOR = "SC";
+let VENDEDOR_FOTO_URL = null;
+
+// ---------------- CARRINHO GUARDADO NO CELULAR (localStorage) ----------------
+// Pra não perder os itens marcados quando o cliente atualiza a página ou
+// sai pra atender uma ligação e volta. Guardado separado por vendedor
+// (chave com o slug do link), só código + quantidade — o preço sempre vem
+// fresco do banco. Não expira. Mesmo mecanismo já aprovado no catálogo
+// Material Escolar, adaptado pra esse (sem caixa/fração/numeração aqui).
+let CHAVE_GUARDADOS = null;
+let ENVIADO_EM = null; // hora (Date.now()) do último "Enviar interesse", ou null
+let PERGUNTA_ENVIO_ABERTA = false;
+
+function salvarItensMarcados() {
+  if (!CHAVE_GUARDADOS) return;
   try {
-    if (!CACHE_MASTER[MARCA_ATUAL]) {
-      let query = getClient().from(config.tabela).select("*").eq("area", CONFIG.areaBase);
-      config.ordenarPor.forEach(([coluna, asc]) => {
-        query = query.order(coluna, { ascending: asc });
-      });
-      const { data, error } = await query;
-      if (error) throw error;
-      CACHE_MASTER[MARCA_ATUAL] = data || [];
-    }
-    const master = CACHE_MASTER[MARCA_ATUAL];
-
-    let areaMap = new Map();
-    if (AREA_SELECIONADA !== CONFIG.areaBase) {
-      const { data: areaData, error: areaError } = await getClient()
-        .from(config.tabela)
-        .select("*")
-        .eq("area", AREA_SELECIONADA);
-      if (areaError) throw areaError;
-      (areaData || []).forEach((row) => areaMap.set(row.codigo, row));
+    const itens = {};
+    QTY.forEach((qtd, codigo) => {
+      if (qtd > 0) itens[codigo] = qtd;
+    });
+    if (Object.keys(itens).length === 0) {
+      localStorage.removeItem(CHAVE_GUARDADOS);
     } else {
-      // A própria área base já tem os preços na "master" — usa ela mesma como referência.
-      master.forEach((row) => areaMap.set(row.codigo, row));
-    }
-
-    if (config.tipo === "colecao") {
-      renderizarHavaianas(master, areaMap);
-    } else {
-      renderizarPorCodigo(master, areaMap, config);
+      localStorage.setItem(CHAVE_GUARDADOS, JSON.stringify({ itens, enviadoEm: ENVIADO_EM }));
     }
   } catch (erro) {
-    lista.innerHTML = `<p class="carregando">Erro ao carregar: ${erro.message}</p>`;
+    // Modo privado, sem espaço, etc. — o catálogo continua funcionando
+    // normal, só não guarda nada entre uma visita e outra.
   }
 }
 
-// ---------------- HAVAIANAS (preço por coleção) ----------------
-function renderizarHavaianas(master, areaMap) {
-  const lista = document.getElementById("lista-precos");
+function carregarItensMarcados() {
+  if (!CHAVE_GUARDADOS) return;
+  try {
+    const salvo = JSON.parse(localStorage.getItem(CHAVE_GUARDADOS) || "null");
+    if (!salvo || !salvo.itens) return;
 
-  const porSegmento = new Map();
-  master.forEach((r) => {
-    if (!porSegmento.has(r.segmento)) porSegmento.set(r.segmento, new Map());
-    const porColecao = porSegmento.get(r.segmento);
-    if (!porColecao.has(r.colecao)) porColecao.set(r.colecao, []);
-    porColecao.get(r.colecao).push(r);
-  });
-
-  lista.innerHTML = "";
-
-  Array.from(porSegmento.keys())
-    .sort((a, b) => a.localeCompare(b, "pt-BR"))
-    .forEach((segmento) => {
-      const porColecao = porSegmento.get(segmento);
-      const grupoEl = document.createElement("div");
-      grupoEl.className = "grupo-segmento";
-
-      const colecoesOrdenadas = Array.from(porColecao.keys()).sort((a, b) => a.localeCompare(b, "pt-BR"));
-      const cartoesHtml = colecoesOrdenadas
-        .map((colecao) => {
-          const itens = porColecao.get(colecao);
-          const precoBase = itens[0].preco;
-          const negociacaoBaseInfo = !!itens[0].negociacao;
-
-          // Linha desta ÁREA pra essa coleção, se já existir uma — é ela que
-          // manda no que o cliente vê de verdade (preço OU negociação vêm
-          // sempre juntos, gravados pelo painel). A base só entra como
-          // "dica" de referência enquanto a área ainda não tem linha própria.
-          let linhaArea = null;
-          for (const item of itens) {
-            const linha = areaMap.get(item.codigo);
-            if (linha) { linhaArea = linha; break; }
-          }
-
-          const emNegociacao = linhaArea ? !!linhaArea.negociacao : negociacaoBaseInfo;
-          const precoArea = linhaArea && linhaArea.preco != null ? linhaArea.preco : null;
-          const valorInput = precoArea != null ? precoArea : "";
-          const placeholder = emNegociacao ? "Negociação" : `Base: ${formatarReais(precoBase)}`;
-          // Visível/oculto também é por área — usa a linha desta área quando
-          // já existe uma, senão cai pro estado da base como referência.
-          const visivel = linhaArea ? linhaArea.ativo !== false : itens[0].ativo !== false;
-
-          return `
-            <div class="cartao-item${visivel ? "" : " oculto"}" data-colecao="${escapeAttr(colecao)}">
-              <div class="item-info">
-                <span class="item-nome">${escapeHtml(colecao)}</span>
-                ${emNegociacao ? '<span class="item-tag-negociacao">Negociação</span>' : ""}
-              </div>
-              <div class="item-preco-campo">
-                R$
-                <input type="number" step="0.01" value="${valorInput}" placeholder="${placeholder}" data-campo="preco-colecao" />
-                <button class="btn-marcar-negociacao" data-acao="marcar-negociacao" title="Deixar esta coleção sem preço fixo (Negociação)">Negociação</button>
-              </div>
-              <button class="btn-toggle-visibilidade ${visivel ? "visivel" : "oculto"}" data-acao="toggle-visibilidade">
-                ${visivel ? "Visível" : "Oculto"}
-              </button>
-              <span class="item-salvando" hidden>Salvo ✓</span>
-            </div>
-          `;
-        })
-        .join("");
-
-      grupoEl.innerHTML = `<div class="grupo-segmento-titulo">${escapeHtml(segmento)}</div>${cartoesHtml}`;
-      lista.appendChild(grupoEl);
-
-      grupoEl.querySelectorAll(".cartao-item").forEach((cartaoEl) => {
-        const colecao = cartaoEl.dataset.colecao;
-        const itens = porColecao.get(colecao);
-        const input = cartaoEl.querySelector("input[data-campo]");
-        input.addEventListener("change", () => salvarPrecoHavaianas(itens, input, cartaoEl, areaMap));
-        const botaoNegociacao = cartaoEl.querySelector(".btn-marcar-negociacao");
-        botaoNegociacao.addEventListener("click", () => marcarComoNegociacao(itens, input, cartaoEl, colecao, areaMap));
-        const botaoVisibilidade = cartaoEl.querySelector(".btn-toggle-visibilidade");
-        botaoVisibilidade.addEventListener("click", () => {
-          const linhasBase = itens.map((item) => linhaDaAreaOuBase(item, areaMap));
-          alternarVisibilidade("havaianas", linhasBase, linhasBase[0].ativo !== false, cartaoEl, "Havaianas", areaMap);
-        });
-      });
+    const codigosNoCatalogo = new Set(TODOS_ITENS.map((i) => String(i.codigo)));
+    Object.entries(salvo.itens).forEach(([codigo, qtd]) => {
+      if (codigosNoCatalogo.has(codigo) && qtd > 0) QTY.set(codigo, qtd);
     });
+    ENVIADO_EM = salvo.enviadoEm || null;
 
-  if (master.length === 0) {
-    lista.innerHTML = '<p class="carregando">Nenhum produto encontrado.</p>';
+    // Regrava já sem os itens que saíram do catálogo (limpeza silenciosa).
+    salvarItensMarcados();
+  } catch (erro) {
+    // Guardado corrompido ou inacessível — ignora e segue com carrinho vazio.
   }
 }
 
-// Volta uma coleção pra "Negociação" (sem preço fixo) na área que está sendo
-// editada agora — o campo "negociacao" é o mesmo que o catálogo do cliente
-// olha pra decidir se mostra preço ou "Negociação" no pedido do WhatsApp.
-async function marcarComoNegociacao(itens, input, cartaoEl, colecao, areaMap) {
-  const confirmar = confirm(
-    `Marcar "${colecao}" como Negociação (sem preço fixo) na área ${AREA_SELECIONADA}?\n\nO cliente dessa área vai ver "Negociação" no catálogo, e o item não entra na soma do pedido no WhatsApp.`
-  );
-  if (!confirmar) return;
+// Agrupa tudo que precisa acontecer sempre que o cliente mexe num item:
+// salva no celular, atualiza a tela, e cancela a pergunta de "já enviou?"
+// (se ele voltou a mexer, é porque ainda está montando o pedido).
+function aposMudarItens() {
+  ENVIADO_EM = null;
+  salvarItensMarcados();
+  renderizarItens();
+  atualizarRodape();
+}
 
-  const linhas = itens.map((item) => prepararLinhaParaArea(linhaDaAreaOuBase(item, areaMap), AREA_SELECIONADA, {
-    preco: null,
-    negociacao: true,
+function inc(codigo) {
+  QTY.set(codigo, (QTY.get(codigo) || 0) + 1);
+  aposMudarItens();
+}
+function dec(codigo) {
+  QTY.set(codigo, Math.max(0, (QTY.get(codigo) || 0) - 1));
+  aposMudarItens();
+}
+function toggleInteresse(codigo) {
+  const atual = QTY.get(codigo) || 0;
+  QTY.set(codigo, atual > 0 ? 0 : 1);
+  aposMudarItens();
+}
+
+// ---------------- CAIXINHA DE CONFIRMAÇÃO (própria da página) ----------------
+// Usada tanto pra "você já enviou esses itens?" quanto pra confirmação da
+// lixeira — nunca o confirm() feio do navegador.
+function perguntar({ titulo, texto, simTexto, naoTexto }) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById("modal-confirmacao");
+    document.getElementById("modal-titulo").textContent = titulo;
+    const textoEl = document.getElementById("modal-texto");
+    textoEl.textContent = texto || "";
+    textoEl.hidden = !texto;
+
+    const btnSim = document.getElementById("modal-btn-sim");
+    const btnNao = document.getElementById("modal-btn-nao");
+    btnSim.textContent = simTexto;
+    btnNao.textContent = naoTexto;
+
+    function fechar(resultado) {
+      overlay.hidden = true;
+      btnSim.onclick = null;
+      btnNao.onclick = null;
+      resolve(resultado);
+    }
+    btnSim.onclick = () => fechar(true);
+    btnNao.onclick = () => fechar(false);
+    overlay.hidden = false;
+  });
+}
+
+// Confere se precisa perguntar "você já enviou esses itens pelo WhatsApp?"
+// — só pergunta se tiver mandado há pelo menos 4s (pra não disparar na
+// hora que o próprio clique em "Enviar interesse" acontece) e só se ainda
+// tiver item marcado. Chamada tanto ao reabrir/recarregar a página quanto
+// ao voltar pra aba depois de ter ido pro WhatsApp.
+function verificarPerguntaEnvio() {
+  if (!ENVIADO_EM || PERGUNTA_ENVIO_ABERTA) return;
+  if (Date.now() - ENVIADO_EM < 4000) return;
+  const totalItens = Array.from(QTY.values()).filter((q) => q > 0).length;
+  if (totalItens === 0) return;
+  perguntarSeJaEnviou();
+}
+
+async function perguntarSeJaEnviou() {
+  PERGUNTA_ENVIO_ABERTA = true;
+  const confirmou = await perguntar({
+    titulo: "Você já enviou esses itens pelo WhatsApp?",
+    texto: "Quer limpar a seleção pra começar de novo?",
+    simTexto: "Sim, limpar",
+    naoTexto: "Não, manter",
+  });
+  PERGUNTA_ENVIO_ABERTA = false;
+
+  if (confirmou) QTY.clear();
+  // Nas duas respostas, já perguntou — não pergunta de novo até o cliente
+  // mandar outra vez pelo WhatsApp.
+  ENVIADO_EM = null;
+  salvarItensMarcados();
+  renderizarItens();
+  atualizarRodape();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") verificarPerguntaEnvio();
+});
+window.addEventListener("pageshow", () => verificarPerguntaEnvio());
+
+// Desliza a barra de abas sozinha pra deixar a aba escolhida no meio da
+// tela — assim as próximas categorias aparecem sem precisar arrastar.
+function centralizarAbaAtiva(nav) {
+  const ativa = nav.querySelector(".categoria-tab.ativa");
+  if (!ativa) return;
+  const caixaNav = nav.getBoundingClientRect();
+  const caixaAba = ativa.getBoundingClientRect();
+  const alvo = nav.scrollLeft + (caixaAba.left - caixaNav.left) - (nav.clientWidth - caixaAba.width) / 2;
+  nav.scrollTo({ left: Math.max(0, alvo), behavior: "smooth" });
+}
+
+// Ordem fixa de categorias pedida pelo Leonardo — vale só pra Área SC.
+// Categorias fora dessa lista (e qualquer área que não seja SC) continuam
+// em ordem alfabética, depois das que estão aqui.
+const ORDEM_CATEGORIAS_SC = ["Black November FECHA MÊS", "Black November", "Bebidas", "Bomboniere", "Mercearia", "Limpeza", "Higiene", "Higiene 2", "Perfumaria", "Brinquedos & Bazar", "Brinquedos", "Material de Construção"];
+// Nome que aparece na aba pra Área SC (texto só — a categoria de verdade,
+// usada pra filtrar os itens, continua a mesma do lado esquerdo).
+const RENOMEAR_ABA_SC = {
+  "Brinquedos & Bazar": "Bazar",
+  "Danilla Foods": "Danilla R$600,00",
+  "GauchaFarma": "Gaucha R$250,00",
+  "Hayamax": "Hayamax R$400,00",
+};
+function compararCategoriasSC(a, b) {
+  const ia = ORDEM_CATEGORIAS_SC.indexOf(a);
+  const ib = ORDEM_CATEGORIAS_SC.indexOf(b);
+  if (ia !== -1 && ib !== -1) return ia - ib;
+  if (ia !== -1) return -1;
+  if (ib !== -1) return 1;
+  return a.localeCompare(b, "pt-BR");
+}
+
+// Nome da aba/categoria, já trocado pelo texto da Área SC quando existir
+// (RENOMEAR_ABA_SC) — mesmo texto que já aparece na aba.
+function rotuloCategoria(categoria) {
+  return AREA_VENDEDOR === "SC" && RENOMEAR_ABA_SC[categoria] ? RENOMEAR_ABA_SC[categoria] : categoria;
+}
+
+// Algumas categorias são "sellers" com pedido mínimo próprio (Danilla,
+// Gaúcha Farma, Pado, Girassol, etc.) — o valor já vem escrito dentro do
+// texto da aba, de dois jeitos possíveis: ou direto no nome real da
+// categoria (ex: "Pado R$800,00"), ou só no texto trocado pela Área SC
+// (ex: "GauchaFarma" → "Gaucha R$250,00"). Essa função acha o "R$ X,XX"
+// de dentro desse texto, de qualquer um dos dois jeitos — e devolve null
+// pra categoria comum (Black November, Bebidas, Limpeza, etc.), que não
+// tem pedido mínimo nenhum.
+function pedidoMinimoDaCategoria(categoria) {
+  const match = rotuloCategoria(categoria).match(/R\$\s?[\d.,]+/);
+  return match ? match[0] : null;
+}
+
+// Título do grupo no carrinho: o nome da categoria/seller sem o "R$ X,XX"
+// (que já aparece destacado à parte, no aviso de pedido mínimo).
+function tituloGrupoCarrinho(categoria) {
+  return rotuloCategoria(categoria).replace(/\s*R\$\s?[\d.,]+/, "").trim() || categoria;
+}
+
+// Lista (ordenada) de categorias que têm pelo menos 1 item publicado —
+// usada tanto pra desenhar as abas quanto pra escolher a aba inicial (não
+// existe mais aba "Todos": a primeira categoria da lista já abre
+// selecionada, igual já acontece nos catálogos Impala/Nadir/Havaianas).
+function categoriasOrdenadasPresentes() {
+  return Array.from(new Set(TODOS_ITENS.map((i) => i.categoria)))
+    .filter(Boolean)
+    .sort(AREA_VENDEDOR === "SC" ? compararCategoriasSC : (a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+// ---------------- GRUPO: Martins x Parceiros ----------------
+// Toda categoria cujo nome de aba (depois do RENOMEAR_ABA_SC, quando vale)
+// termina com um valor em R$ é "parceiro" — é o mesmo sinal que já usamos
+// pro selo de "Pedido mínimo" no carrinho (pedidoMinimoDaCategoria). O
+// resto é "martins". Funciona em qualquer área: nas que não têm nenhuma
+// categoria de seller, o grupo "parceiros" simplesmente fica vazio.
+function grupoDaCategoria(categoria) {
+  return pedidoMinimoDaCategoria(categoria) ? "parceiros" : "martins";
+}
+
+function categoriasDoGrupo(grupo) {
+  return categoriasOrdenadasPresentes().filter((c) => grupoDaCategoria(c) === grupo);
+}
+
+function renderizarAbasGrupo() {
+  document.querySelectorAll(".aba-grupo").forEach((btn) => {
+    btn.classList.toggle("ativa", btn.dataset.grupo === GRUPO_ATIVO);
+  });
+}
+
+function renderizarAbas() {
+  // Mostra aba pra qualquer categoria que tiver item de verdade — não só
+  // as 10 fixas de CATEGORIAS_INFO — pra categoria nova criada no Painel
+  // de Preços também aparecer aqui (ela só não tem cor/ícone específicos,
+  // usa o visual genérico de "Outros" via infoCategoria/iconeCategoria).
+  // Área SC segue a ordem fixa do Leonardo; as outras áreas, ordem alfabética.
+  // Na Área SC, algumas categorias aparecem com outro texto na aba (pedido do
+  // Leonardo) — é só o texto; o filtro dos itens continua usando o nome de
+  // categoria de verdade, então nada quebra.
+  // Só mostra a categoria do grupo (Martins/Parceiros) escolhido ali em cima.
+  const abas = categoriasDoGrupo(GRUPO_ATIVO).map((c) => ({
+    key: c,
+    label: AREA_VENDEDOR === "SC" && RENOMEAR_ABA_SC[c] ? RENOMEAR_ABA_SC[c] : c,
   }));
 
-  const botao = cartaoEl.querySelector(".btn-marcar-negociacao");
-  input.disabled = true;
-  botao.disabled = true;
-  try {
-    const { error } = await getClient()
-      .from("havaianas")
-      .upsert(linhas, { onConflict: "codigo,area" });
-    if (error) throw error;
-
-    atualizarAreaMapComLinhasSalvas(areaMap, linhas);
-
-    input.value = "";
-    input.placeholder = "Negociação";
-    const infoEl = cartaoEl.querySelector(".item-info");
-    if (!infoEl.querySelector(".item-tag-negociacao")) {
-      infoEl.insertAdjacentHTML("beforeend", '<span class="item-tag-negociacao">Negociação</span>');
-    }
-    if (AREA_SELECIONADA === CONFIG.areaBase) {
-      // A área base mudou de verdade — limpa o cache pra próxima troca de
-      // aba recarregar certinho (a linha acima já mantém a tela atual ok).
-      delete CACHE_MASTER.Havaianas;
-    }
-    marcarSalvo(cartaoEl);
-  } catch (erro) {
-    alert("Não consegui salvar: " + detalharErro(erro));
-  } finally {
-    input.disabled = false;
-    botao.disabled = false;
-  }
+  const nav = document.getElementById("categoria-tabs");
+  // Guarda onde a barra estava antes de redesenhar (redesenhar zera a
+  // rolagem) pra o deslize até a aba nova começar do lugar certo.
+  const rolagemAnterior = nav.scrollLeft;
+  nav.innerHTML = abas
+    .map((a) => `<button type="button" class="categoria-tab${a.key === CATEGORIA_ATIVA ? " ativa" : ""}" data-key="${escapeAttr(a.key)}">${escapeHtml(a.label)}</button>`)
+    .join("");
+  nav.scrollLeft = rolagemAnterior;
+  centralizarAbaAtiva(nav);
+  nav.querySelectorAll(".categoria-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      CATEGORIA_ATIVA = btn.dataset.key;
+      // A ordem por preço vale só pra aba que está aberta: trocou de aba, volta ao padrão.
+      ORDEM_PRECO = "";
+      // Tocar numa aba durante a busca sai da busca e mostra a categoria.
+      if (BUSCA || !document.getElementById("barra-busca").hidden) {
+        const campo = document.getElementById("campo-busca");
+        campo.value = "";
+        BUSCA = "";
+        document.getElementById("barra-busca").hidden = true;
+        document.getElementById("btn-busca").classList.remove("ativo");
+        nav.classList.remove("em-busca");
+      }
+      renderizarAbas();
+      renderizarItens();
+      // Ao trocar de aba, volta a rolagem pro início — senão a lista nova
+      // abre no meio, na mesma posição em que a aba anterior tinha ficado.
+      window.scrollTo({ top: 0, behavior: "instant" });
+    });
+  });
 }
 
-async function salvarPrecoHavaianas(itens, input, cartaoEl, areaMap) {
-  const novoPreco = Number(input.value);
-  if (!input.value || isNaN(novoPreco) || novoPreco <= 0) {
-    alert("Digite um preço válido.");
+// ---------------- BUSCA (lupa) ----------------
+// Procura em TODAS as categorias de uma vez, pelo nome, código Martins ou
+// código de barras. Ignora acento e maiúscula/minúscula ("lapis" acha
+// "LÁPIS"). Com várias palavras, o item precisa ter todas (em qualquer
+// ordem): "faber 24" acha "LAPIS COR FABER CASTELL 24 CORES".
+function normalizarBusca(texto) {
+  return String(texto || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .trim();
+}
+
+function itemBateComBusca(item, busca) {
+  const alvo = `${normalizarBusca(item.descricao)} ${item.codigo} ${item.codigo_barras || ""}`;
+  return busca.split(/\s+/).every((palavra) => alvo.includes(palavra));
+}
+
+function abrirBusca() {
+  document.getElementById("barra-busca").hidden = false;
+  document.getElementById("btn-busca").classList.add("ativo");
+  document.getElementById("campo-busca").focus();
+}
+
+function fecharBusca() {
+  const campo = document.getElementById("campo-busca");
+  campo.value = "";
+  campo.blur();
+  BUSCA = "";
+  document.getElementById("barra-busca").hidden = true;
+  document.getElementById("btn-busca").classList.remove("ativo");
+  document.getElementById("categoria-tabs").classList.remove("em-busca");
+  renderizarItens();
+}
+
+function renderizarItens() {
+  const lista = document.getElementById("lista-itens");
+  const itensFiltrados = TODOS_ITENS
+    .filter((i) => (BUSCA ? itemBateComBusca(i, BUSCA) : i.categoria === CATEGORIA_ATIVA))
+    .sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR"));
+
+  // Ordenar por preço — só dentro da aba aberta, não mexe na ordem padrão de verdade
+  // (a busca da lupa fica sempre no padrão, igual já acontece no Material Escolar).
+  if (ORDEM_PRECO && !BUSCA) {
+    itensFiltrados.sort((a, b) => (ORDEM_PRECO === "menor" ? 1 : -1) * ((Number(a.preco) || 0) - (Number(b.preco) || 0)));
+  }
+  atualizarBotaoOrdenar();
+  document.getElementById("ordenar-wrap").hidden = !!BUSCA;
+
+  if (itensFiltrados.length === 0) {
+    lista.innerHTML = BUSCA
+      ? `<p class="sem-itens">Nenhum produto encontrado para "${escapeHtml(document.getElementById("campo-busca").value.trim())}".</p>`
+      : CATEGORIA_ATIVA
+        ? '<p class="sem-itens">Nenhum item nessa categoria.</p>'
+        : '<p class="sem-itens">Nenhuma oferta de parceiro disponível nesta semana.</p>';
     return;
   }
 
-  const linhas = itens.map((item) => prepararLinhaParaArea(linhaDaAreaOuBase(item, areaMap), AREA_SELECIONADA, {
-    preco: novoPreco,
-    negociacao: false,
-  }));
+  const resumoBusca = BUSCA
+    ? `<p class="busca-resumo">${itensFiltrados.length} ${itensFiltrados.length === 1 ? "produto encontrado" : "produtos encontrados"} em todas as categorias</p>`
+    : "";
 
-  input.disabled = true;
-  try {
-    const { error } = await getClient()
-      .from("havaianas")
-      .upsert(linhas, { onConflict: "codigo,area" });
-    if (error) throw error;
-    atualizarAreaMapComLinhasSalvas(areaMap, linhas);
-    marcarSalvo(cartaoEl);
-    if (AREA_SELECIONADA === CONFIG.areaBase) {
-      // A área base mudou de verdade — limpa o cache pra recarregar certinho.
-      delete CACHE_MASTER.Havaianas;
-    }
-  } catch (erro) {
-    alert("Não consegui salvar: " + detalharErro(erro));
-  } finally {
-    input.disabled = false;
-  }
-}
-
-// ---------------- IMPALA / NADIR (preço por código) ----------------
-function renderizarPorCodigo(master, areaMap, config) {
-  const lista = document.getElementById("lista-precos");
-
-  const porColecao = new Map();
-  master.forEach((r) => {
-    if (!porColecao.has(r.colecao)) porColecao.set(r.colecao, []);
-    porColecao.get(r.colecao).push(r);
-  });
-
-  lista.innerHTML = "";
-
-  Array.from(porColecao.keys())
-    .sort((a, b) => a.localeCompare(b, "pt-BR"))
-    .forEach((colecao) => {
-      const itens = porColecao.get(colecao);
-      const grupoEl = document.createElement("div");
-      grupoEl.className = "grupo-segmento";
-
-      const cartoesHtml = itens
-        .map((item) => {
-          const linhaArea = areaMap.get(item.codigo);
-          const valorInput = linhaArea && linhaArea.preco_unitario != null ? linhaArea.preco_unitario : "";
-          const placeholder = `Base: ${formatarReais(item.preco_unitario)}`;
-          const totalAtual = linhaArea && linhaArea.preco_total != null ? linhaArea.preco_total : null;
-          // Visível/oculto também é por área — usa a linha desta área quando
-          // já existe uma, senão cai pro estado da base como referência.
-          const visivel = linhaArea ? linhaArea.ativo !== false : item.ativo !== false;
-
-          return `
-            <div class="cartao-item${visivel ? "" : " oculto"}" data-codigo="${item.codigo}">
-              <div class="item-info">
-                <span class="item-nome">${item.codigo} — ${escapeHtml(item.descricao)}</span>
-                <div class="item-detalhe">Fração: ${item.fracao}</div>
-              </div>
-              <div class="item-preco-campo">
-                R$
-                <input type="number" step="0.01" value="${valorInput}" placeholder="${placeholder}" data-campo="preco-unitario" />
-              </div>
-              <span class="item-preco-total" data-campo="preco-total">
-                ${totalAtual != null ? `Caixa/total: ${formatarReais(totalAtual)}` : ""}
-              </span>
-              <button class="btn-toggle-visibilidade ${visivel ? "visivel" : "oculto"}" data-acao="toggle-visibilidade">
-                ${visivel ? "Visível" : "Oculto"}
-              </button>
-              <span class="item-salvando" hidden>Salvo ✓</span>
+  lista.innerHTML = resumoBusca + itensFiltrados
+    .map((item) => {
+      const info = infoCategoria(item.categoria);
+      const qty = QTY.get(item.codigo) || 0;
+      const interessado = qty > 0;
+      return `
+        <div class="item-card" style="background: ${info.bg};">
+          <div class="item-icone${item.foto_url ? " tem-foto" : ""}"${item.foto_url ? ` data-foto="${escapeAttr(item.foto_url)}"` : ""}>${item.foto_url ? `<img class="item-foto-miniatura" src="${escapeAttr(urlMiniatura(item.foto_url))}" data-original="${escapeAttr(item.foto_url)}" alt="" loading="lazy">` : iconeCategoria(item.categoria, info.fg)}</div>
+          <div class="item-corpo">
+            <div class="item-descricao">${escapeHtml(item.descricao)}</div>
+            <div class="item-codigos">
+              <span>Cód. ${escapeHtml(item.codigo)}</span>
+              ${item.codigo_barras ? `<span class="divisor"></span><span>Barras ${escapeHtml(item.codigo_barras)}</span>` : ""}
             </div>
-          `;
-        })
-        .join("");
-
-      grupoEl.innerHTML = `<div class="grupo-segmento-titulo">${escapeHtml(colecao)}</div>${cartoesHtml}`;
-      lista.appendChild(grupoEl);
-
-      grupoEl.querySelectorAll(".cartao-item").forEach((cartaoEl) => {
-        const codigo = Number(cartaoEl.dataset.codigo);
-        const item = itens.find((i) => i.codigo === codigo);
-        const input = cartaoEl.querySelector("input[data-campo]");
-        input.addEventListener("change", () => salvarPrecoPorCodigo(item, input, cartaoEl, areaMap));
-        const botaoVisibilidade = cartaoEl.querySelector(".btn-toggle-visibilidade");
-        botaoVisibilidade.addEventListener("click", () => {
-          const linhaBase = linhaDaAreaOuBase(item, areaMap);
-          alternarVisibilidade(MARCAS[MARCA_ATUAL].tabela, [linhaBase], linhaBase.ativo !== false, cartaoEl, MARCA_ATUAL, areaMap);
-        });
-      });
-    });
-
-  if (master.length === 0) {
-    lista.innerHTML = '<p class="carregando">Nenhum produto encontrado.</p>';
-  }
-}
-
-async function salvarPrecoPorCodigo(item, input, cartaoEl, areaMap) {
-  const novoUnitario = Number(input.value);
-  if (!input.value || isNaN(novoUnitario) || novoUnitario <= 0) {
-    alert("Digite um preço válido.");
-    return;
-  }
-  const novoTotal = Math.round(novoUnitario * item.fracao * 100) / 100;
-
-  const linha = prepararLinhaParaArea(linhaDaAreaOuBase(item, areaMap), AREA_SELECIONADA, {
-    preco_unitario: novoUnitario,
-    preco_total: novoTotal,
-  });
-
-  input.disabled = true;
-  try {
-    const { error } = await getClient()
-      .from(MARCAS[MARCA_ATUAL].tabela)
-      .upsert([linha], { onConflict: "codigo,area" });
-    if (error) throw error;
-    atualizarAreaMapComLinhasSalvas(areaMap, [linha]);
-    cartaoEl.querySelector('[data-campo="preco-total"]').textContent = `Caixa/total: ${formatarReais(novoTotal)}`;
-    marcarSalvo(cartaoEl);
-    if (AREA_SELECIONADA === CONFIG.areaBase) {
-      delete CACHE_MASTER[MARCA_ATUAL];
-    }
-  } catch (erro) {
-    alert("Não consegui salvar: " + detalharErro(erro));
-  } finally {
-    input.disabled = false;
-  }
-}
-
-// ---------------- MOSTRAR / OCULTAR (sem estoque, por área) ----------------
-// Visível/oculto vale só pra área que está sendo editada agora — cada área
-// tem sua própria linha (mesmo esquema de codigo+area usado pra preço), então
-// marcar "Oculto" na área SC não mexe no que aparece pras outras áreas.
-async function alternarVisibilidade(tabela, linhasBase, visivelAtual, cartaoEl, nomeMarca, areaMap) {
-  const novoValor = !visivelAtual;
-  const confirmar = confirm(
-    novoValor
-      ? `Voltar a mostrar este item no catálogo da área ${AREA_SELECIONADA}?`
-      : `Ocultar este item por falta de estoque na área ${AREA_SELECIONADA}? Ele some do catálogo dessa área até você marcar como visível de novo (as outras áreas não são afetadas).`
-  );
-  if (!confirmar) return;
-
-  const linhas = linhasBase.map((linha) => prepararLinhaParaArea(linha, AREA_SELECIONADA, {
-    ativo: novoValor,
-  }));
-
-  const botao = cartaoEl.querySelector(".btn-toggle-visibilidade");
-  botao.disabled = true;
-  try {
-    const { error } = await getClient().from(tabela).upsert(linhas, { onConflict: "codigo,area" });
-    if (error) throw error;
-
-    atualizarAreaMapComLinhasSalvas(areaMap, linhas);
-    if (AREA_SELECIONADA === CONFIG.areaBase) {
-      delete CACHE_MASTER[nomeMarca];
-    }
-
-    cartaoEl.classList.toggle("oculto", !novoValor);
-    botao.textContent = novoValor ? "Visível" : "Oculto";
-    botao.classList.toggle("visivel", novoValor);
-    botao.classList.toggle("oculto", !novoValor);
-    marcarSalvo(cartaoEl);
-  } catch (erro) {
-    alert("Não consegui salvar: " + detalharErro(erro));
-  } finally {
-    botao.disabled = false;
-  }
-}
-
-// ---------------- GERENCIAR ACESSOS (admin) ----------------
-async function carregarListaAcessos() {
-  const listaEl = document.getElementById("lista-acessos");
-  listaEl.innerHTML = '<p class="carregando">Carregando acessos…</p>';
-
-  try {
-    const { data, error } = await getClient()
-      .from("acessos_precos")
-      .select("nome, area")
-      .order("nome", { ascending: true });
-    if (error) throw error;
-
-    listaEl.innerHTML = (data || [])
-      .map((a) => {
-        const admin = a.area === null;
-        return `
-          <div class="cartao-acesso${admin ? " admin" : ""}">
-            <span class="acesso-nome">${escapeHtml(a.nome)}</span>
-            <span class="acesso-area">${admin ? "Administrador" : escapeHtml(a.area)}</span>
+            <div class="item-acao-linha">
+              <div class="item-preco">${formatarPreco(item.preco)}</div>
+              ${interessado
+                ? `<div class="item-qty" data-codigo="${escapeAttr(item.codigo)}">
+                     <button type="button" class="btn-dec" aria-label="Diminuir quantidade">−</button>
+                     ${areaUsaQuantidadeDigitavel(AREA_VENDEDOR)
+                       ? `<input type="text" inputmode="numeric" pattern="[0-9]*" class="qty-valor qty-valor-input" aria-label="Quantidade" value="${qty}">`
+                       : `<div class="qty-valor">${qty}</div>`}
+                     <button type="button" class="btn-inc" aria-label="Aumentar quantidade">+</button>
+                   </div>`
+                : `<button type="button" class="item-interesse-pill" data-codigo="${escapeAttr(item.codigo)}">Tenho interesse</button>`}
+            </div>
           </div>
-        `;
-      })
-      .join("");
-  } catch (erro) {
-    listaEl.innerHTML = `<p class="carregando">Erro ao carregar acessos: ${erro.message}</p>`;
+        </div>
+      `;
+    })
+    .join("");
+
+  lista.querySelectorAll(".item-qty").forEach((el) => {
+    const codigo = el.dataset.codigo;
+    el.querySelector(".btn-dec").addEventListener("click", () => dec(codigo));
+    el.querySelector(".btn-inc").addEventListener("click", () => inc(codigo));
+    const campoQtd = el.querySelector(".qty-valor-input");
+    if (campoQtd) {
+      // Enquanto digita, só limpa caractere inválido — não re-renderiza a
+      // cada tecla (isso tiraria o foco do campo no meio da digitação).
+      campoQtd.addEventListener("input", () => {
+        const limpo = campoQtd.value.replace(/[^0-9]/g, "");
+        if (limpo !== campoQtd.value) campoQtd.value = limpo;
+      });
+      // Ao confirmar (saiu do campo ou apertou Enter/OK no teclado), aplica
+      // de vez — mesmo caminho dos botões − e + (salva no celular, atualiza
+      // o rodapé etc.).
+      campoQtd.addEventListener("change", () => definirQuantidade(codigo, campoQtd.value));
+      // Clicar no campo já seleciona o número atual, pra digitar por cima
+      // sem precisar apagar primeiro. O setTimeout(0) é necessário porque,
+      // num clique real, o navegador reposiciona o cursor pela coordenada
+      // do clique IMEDIATAMENTE depois do evento "focus" — sem isso, a
+      // seleção feita aqui seria desfeita um instante depois.
+      campoQtd.addEventListener("focus", () => setTimeout(() => campoQtd.select(), 0));
+    }
+  });
+  lista.querySelectorAll(".item-interesse-pill").forEach((btn) => {
+    btn.addEventListener("click", () => toggleInteresse(btn.dataset.codigo));
+  });
+  // Se a miniatura ainda não existir (foto nova, ainda não processada),
+  // cai sozinho pra foto original — nunca fica sem mostrar nada.
+  lista.querySelectorAll(".item-foto-miniatura").forEach((img) => {
+    img.addEventListener("error", () => {
+      if (img.src !== img.dataset.original) img.src = img.dataset.original;
+    }, { once: true });
+  });
+}
+
+// ---------------- Ordenar por preço (ícone + menu, igual ao Nadir) ----------------
+function atualizarBotaoOrdenar() {
+  document.getElementById("btn-ordenar").classList.toggle("ativo", !!ORDEM_PRECO);
+  document.querySelectorAll("#menu-ordenar button").forEach((btn) => {
+    btn.classList.toggle("selecionada", (btn.dataset.ordenacao || "") === ORDEM_PRECO);
+  });
+}
+
+{
+  const menuOrdenar = document.getElementById("menu-ordenar");
+  document.getElementById("btn-ordenar").addEventListener("click", (e) => {
+    e.stopPropagation();
+    menuOrdenar.hidden = !menuOrdenar.hidden;
+  });
+  menuOrdenar.querySelectorAll("button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      ORDEM_PRECO = btn.dataset.ordenacao || "";
+      menuOrdenar.hidden = true;
+      renderizarItens();
+      window.scrollTo({ top: 0, behavior: "instant" });
+    });
+  });
+  // Com o menu aberto, tocar fora dele só fecha o menu — não deixa o toque
+  // passar pro que estiver embaixo (senão o cliente podia, sem querer, somar
+  // uma unidade num "+" só tentando fechar o menu).
+  document.addEventListener("click", (e) => {
+    if (!menuOrdenar.hidden && !menuOrdenar.contains(e.target)) {
+      menuOrdenar.hidden = true;
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
+}
+
+// ---------------- Abas de grupo (Martins / Parceiros) ----------------
+document.querySelectorAll(".aba-grupo").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const grupo = btn.dataset.grupo;
+    if (grupo === GRUPO_ATIVO) return;
+    GRUPO_ATIVO = grupo;
+    CATEGORIA_ATIVA = categoriasDoGrupo(GRUPO_ATIVO)[0] || null;
+    ORDEM_PRECO = "";
+    // Tocar num grupo durante a busca sai da busca, igual já acontece ao tocar numa aba de categoria.
+    if (BUSCA || !document.getElementById("barra-busca").hidden) {
+      const campo = document.getElementById("campo-busca");
+      campo.value = "";
+      BUSCA = "";
+      document.getElementById("barra-busca").hidden = true;
+      document.getElementById("btn-busca").classList.remove("ativo");
+      document.getElementById("categoria-tabs").classList.remove("em-busca");
+    }
+    renderizarAbasGrupo();
+    renderizarAbas();
+    renderizarItens();
+    window.scrollTo({ top: 0, behavior: "instant" });
+  });
+});
+
+document.getElementById("btn-busca").addEventListener("click", () => {
+  if (document.getElementById("barra-busca").hidden) abrirBusca();
+  else fecharBusca();
+});
+document.getElementById("btn-fechar-busca").addEventListener("click", fecharBusca);
+document.getElementById("campo-busca").addEventListener("input", (e) => {
+  BUSCA = normalizarBusca(e.target.value);
+  document.getElementById("categoria-tabs").classList.toggle("em-busca", !!BUSCA);
+  renderizarItens();
+  window.scrollTo({ top: 0, behavior: "instant" });
+});
+// "Enter"/"Buscar" do teclado do celular só fecha o teclado (a lista já filtrou).
+document.getElementById("campo-busca").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") e.target.blur();
+});
+
+// ---------------- FOTO AMPLIADA (toque na foto do produto) ----------------
+function abrirFotoAmpliada(url) {
+  const img = document.getElementById("foto-zoom-img");
+  img.src = url;
+  document.getElementById("foto-zoom-fundo").hidden = false;
+}
+function fecharFotoAmpliada() {
+  document.getElementById("foto-zoom-fundo").hidden = true;
+  document.getElementById("foto-zoom-img").removeAttribute("src");
+}
+document.getElementById("lista-itens").addEventListener("click", (e) => {
+  const foto = e.target.closest(".item-icone.tem-foto");
+  if (foto) abrirFotoAmpliada(foto.dataset.foto);
+});
+document.getElementById("foto-zoom-fundo").addEventListener("click", (e) => {
+  if (e.target.id === "foto-zoom-fundo" || e.target.id === "foto-zoom-fechar") fecharFotoAmpliada();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !document.getElementById("foto-zoom-fundo").hidden) fecharFotoAmpliada();
+});
+
+// Conta PRODUTOS marcados (não a soma das quantidades) — mesmo critério que
+// já era usado no "Enviar interesse (N itens)" antigo, só que agora manda
+// pro carrinho em vez de direto pro WhatsApp.
+function totalItensCarrinho() {
+  return Array.from(QTY.values()).filter((q) => q > 0).length;
+}
+
+function atualizarRodape() {
+  const btn = document.getElementById("btn-ir-carrinho");
+  const btnPdf = document.getElementById("btn-gerar-pdf");
+  const btnPng = document.getElementById("btn-gerar-png");
+  const btnPdfPedido = document.getElementById("btn-pdf-pedido");
+  const btnLimpar = document.getElementById("btn-limpar-itens");
+  const totalItens = totalItensCarrinho();
+  if (totalItens > 0) {
+    btn.textContent = `Ir para o carrinho (${totalItens} ${totalItens === 1 ? "item" : "itens"})`;
+    btn.disabled = false;
+    btnPdf.disabled = false;
+    btnPng.disabled = false;
+    btnPdfPedido.disabled = false;
+    btnLimpar.disabled = false;
+  } else {
+    btn.textContent = "Nenhum item selecionado";
+    btn.disabled = true;
+    btnPdf.disabled = true;
+    btnPng.disabled = true;
+    btnPdfPedido.disabled = true;
+    btnLimpar.disabled = true;
   }
 }
 
-document.getElementById("btn-criar-acesso").addEventListener("click", async () => {
-  const erroEl = document.getElementById("erro-novo-acesso");
-  const sucessoEl = document.getElementById("sucesso-novo-acesso");
-  erroEl.hidden = true;
-  sucessoEl.hidden = true;
+// ---------------- TELA DO CARRINHO ----------------
+// Agrupa os itens marcados por categoria (mesma ordem das abas) — cada
+// grupo mostra o aviso de "Pedido mínimo R$X" quando a categoria for uma
+// das "sellers" com mínimo próprio (Danilla, Gaúcha, Pado, Girassol...).
+function agruparCarrinhoPorCategoria() {
+  const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
+  const porCategoria = new Map();
+  itensMarcados.forEach((item) => {
+    if (!porCategoria.has(item.categoria)) porCategoria.set(item.categoria, []);
+    porCategoria.get(item.categoria).push(item);
+  });
+  const categoriasOrdenadas = Array.from(porCategoria.keys())
+    .sort(AREA_VENDEDOR === "SC" ? compararCategoriasSC : (a, b) => a.localeCompare(b, "pt-BR"));
+  return categoriasOrdenadas.map((categoria) => ({
+    categoria,
+    itens: porCategoria.get(categoria).sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR")),
+  }));
+}
 
-  const nome = document.getElementById("novo-acesso-nome").value.trim();
-  const area = document.getElementById("novo-acesso-area").value.trim();
-  const email = document.getElementById("novo-acesso-email").value.trim();
-  const senha = document.getElementById("novo-acesso-senha").value.trim();
+function renderizarCarrinho() {
+  const lista = document.getElementById("lista-carrinho");
+  const grupos = agruparCarrinhoPorCategoria();
 
-  if (!nome || !area || !email || !senha) {
-    erroEl.textContent = "Preencha todos os campos.";
-    erroEl.hidden = false;
+  if (grupos.length === 0) {
+    lista.innerHTML = `
+      <div class="carrinho-vazio">
+        <span class="carrinho-vazio-icone">🛒</span>
+        <p>Seu carrinho está vazio.<br>Volte e marque os itens que te interessam.</p>
+      </div>
+    `;
     return;
   }
-  if (senha.length < 6) {
-    erroEl.textContent = "A senha precisa ter pelo menos 6 caracteres.";
-    erroEl.hidden = false;
-    return;
-  }
 
-  const botao = document.getElementById("btn-criar-acesso");
-  botao.disabled = true;
+  lista.innerHTML = grupos.map((grupo) => {
+    const minimo = pedidoMinimoDaCategoria(grupo.categoria);
+    const linhasItens = grupo.itens.map((item) => {
+      const qty = QTY.get(item.codigo) || 0;
+      return `
+        <div class="carrinho-item-linha" data-codigo="${escapeAttr(item.codigo)}">
+          <div class="carrinho-item-info">
+            <p class="carrinho-item-nome">${escapeHtml(item.descricao)}</p>
+            <p class="carrinho-item-codigo">Cód. ${escapeHtml(item.codigo)}</p>
+            <p class="carrinho-item-preco">${formatarPreco(item.preco)} cada</p>
+          </div>
+          <div class="item-qty" data-codigo="${escapeAttr(item.codigo)}">
+            <button type="button" class="btn-dec" aria-label="Diminuir quantidade">−</button>
+            <div class="qty-valor">${qty}</div>
+            <button type="button" class="btn-inc" aria-label="Aumentar quantidade">+</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <div class="grupo-carrinho">
+        <div class="grupo-carrinho-titulo">${escapeHtml(tituloGrupoCarrinho(grupo.categoria))}</div>
+        ${minimo ? `<div class="grupo-carrinho-minimo">Pedido mínimo ${escapeHtml(minimo)}</div>` : ""}
+        <div class="grupo-carrinho-itens">${linhasItens}</div>
+      </div>
+    `;
+  }).join("");
+
+  lista.querySelectorAll(".item-qty").forEach((el) => {
+    const codigo = el.dataset.codigo;
+    el.querySelector(".btn-dec").addEventListener("click", () => { dec(codigo); renderizarCarrinho(); });
+    el.querySelector(".btn-inc").addEventListener("click", () => { inc(codigo); renderizarCarrinho(); });
+  });
+}
+
+function abrirCarrinho() {
+  renderizarCarrinho();
+  mostrarEstado("tela-carrinho");
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+function voltarDoCarrinho() {
+  // Redesenha a lista principal (pode ter mudado quantidade dentro do
+  // carrinho) e volta pra tela do catálogo.
+  renderizarItens();
+  mostrarEstado("app");
+}
+
+// Agrupa por categoria (ordem alfabética) e ordena os itens de cada
+// categoria também em ordem alfabética — mesma lógica usada na mensagem
+// do WhatsApp, reaproveitada aqui pro PDF.
+function agruparPorCategoriaOrdenado(itens) {
+  const porCategoria = new Map();
+  itens.forEach((item) => {
+    if (!porCategoria.has(item.categoria)) porCategoria.set(item.categoria, []);
+    porCategoria.get(item.categoria).push(item);
+  });
+  const categoriasOrdenadas = Array.from(porCategoria.keys()).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  return categoriasOrdenadas.map((categoria) => ({
+    categoria,
+    itens: porCategoria.get(categoria).sort((a, b) => a.descricao.localeCompare(b.descricao, "pt-BR")),
+  }));
+}
+
+// Carrega a foto do produto (URL do Supabase) como base64, porque o jsPDF
+// só consegue inserir imagem já em base64 — não aceita link direto.
+async function carregarImagemComoDataUrl(url) {
   try {
-    const { data: sessionData } = await getClient().auth.getSession();
-    const token = sessionData?.session?.access_token;
-
-    const resposta = await fetch(`${CONFIG.supabase.url}/functions/v1/criar-acesso`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-        "apikey": CONFIG.supabase.anonKey,
-      },
-      body: JSON.stringify({ nome, area, email, senha }),
+    const resposta = await fetch(url);
+    if (!resposta.ok) return null;
+    const blob = await resposta.blob();
+    return await new Promise((resolve, reject) => {
+      const leitor = new FileReader();
+      leitor.onload = () => resolve(leitor.result);
+      leitor.onerror = () => reject(new Error("Falha ao ler imagem"));
+      leitor.readAsDataURL(blob);
     });
-    const resultado = await resposta.json();
-    if (!resposta.ok || !resultado.ok) {
-      throw new Error(resultado.erro || "Não consegui criar o acesso.");
+  } catch (erro) {
+    console.error("[Ofertas da Semana] Não consegui carregar imagem pro PDF:", erro);
+    return null;
+  }
+}
+
+function formatoDaImagem(dataUrl) {
+  if (dataUrl.startsWith("data:image/png")) return "PNG";
+  if (dataUrl.startsWith("data:image/webp")) return "WEBP";
+  return "JPEG";
+}
+
+// Caminho de retângulo arredondado no canvas (mesmo visual dos cartões do PDF).
+function desenharRetanguloArredondado(ctx, x, y, largura, altura, raio) {
+  ctx.beginPath();
+  ctx.moveTo(x + raio, y);
+  ctx.lineTo(x + largura - raio, y);
+  ctx.arcTo(x + largura, y, x + largura, y + raio, raio);
+  ctx.lineTo(x + largura, y + altura - raio);
+  ctx.arcTo(x + largura, y + altura, x + largura - raio, y + altura, raio);
+  ctx.lineTo(x + raio, y + altura);
+  ctx.arcTo(x, y + altura, x, y + altura - raio, raio);
+  ctx.lineTo(x, y + raio);
+  ctx.arcTo(x, y, x + raio, y, raio);
+  ctx.closePath();
+}
+
+// Desenha a foto preenchendo todo o espaço (largura x altura) sem esticar/
+// deformar — corta as sobras da foto original, igual o "preencher" do
+// Instagram, em vez de espremer a imagem pra caber.
+function desenharImagemPreenchendo(ctx, img, x, y, largura, altura) {
+  const razaoAlvo = largura / altura;
+  const razaoFoto = img.width / img.height;
+  let sx = 0, sy = 0, sLargura = img.width, sAltura = img.height;
+  if (razaoFoto > razaoAlvo) {
+    // Foto mais "larga" que o espaço: corta as laterais.
+    sLargura = img.height * razaoAlvo;
+    sx = (img.width - sLargura) / 2;
+  } else {
+    // Foto mais "alta" que o espaço: corta em cima/embaixo.
+    sAltura = img.width / razaoAlvo;
+    sy = (img.height - sAltura) / 2;
+  }
+  ctx.drawImage(img, sx, sy, sLargura, sAltura, x, y, largura, altura);
+}
+
+// Quebra um texto em até "maxLinhas" linhas que cabem em "larguraMax" (usa a
+// fonte já configurada no ctx), cortando com "…" se sobrar texto.
+function quebrarTextoCanvas(ctx, texto, larguraMax, maxLinhas) {
+  const palavras = String(texto || "").split(/\s+/).filter(Boolean);
+  const linhas = [];
+  let linhaAtual = "";
+  palavras.forEach((palavra) => {
+    const tentativa = linhaAtual ? `${linhaAtual} ${palavra}` : palavra;
+    if (ctx.measureText(tentativa).width > larguraMax && linhaAtual) {
+      linhas.push(linhaAtual);
+      linhaAtual = palavra;
+    } else {
+      linhaAtual = tentativa;
+    }
+  });
+  if (linhaAtual) linhas.push(linhaAtual);
+  if (linhas.length === 0) return [""];
+
+  if (linhas.length > maxLinhas) {
+    const cortadas = linhas.slice(0, maxLinhas);
+    let ultima = cortadas[maxLinhas - 1];
+    while (ctx.measureText(ultima + "…").width > larguraMax && ultima.length > 1) {
+      ultima = ultima.slice(0, -1);
+    }
+    cortadas[maxLinhas - 1] = ultima + "…";
+    return cortadas;
+  }
+  return linhas;
+}
+
+// Carrega uma data URL como um objeto Image pronto pra desenhar no canvas.
+function carregarImageElement(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+// Imagem-modelo compartilhada pelo PDF e pelo PNG — molde novo (mesmo
+// padrão adotado no catálogo Impala em out/2026), formato A4 em resolução
+// maior que o molde antigo (1414x2000, era 1131x1600) e cabeçalho mais
+// enxuto, o que abre espaço pra uma 4ª fileira de cartões. Coordenadas em
+// pixels da própria imagem, marcando a área "em branco" onde os cartões
+// podem ser desenhados sem cobrir a moldura — vale pra qualquer template,
+// desde que sigam sempre esse mesmo molde (mesmo tamanho, mesmo espaço em
+// branco no mesmo lugar).
+const CAMINHO_TEMPLATE_PADRAO = "template-oferta.jpg";
+const TEMPLATE_LARGURA = 1414;
+const TEMPLATE_ALTURA = 2000;
+const TEMPLATE_AREA = { esq: 40, dir: 1368, topo: 140, base: 1965 };
+
+// Cada área pode ter o seu próprio template — útil se um dia esse
+// catálogo for negociado com outra empresa (ex: uma distribuidora
+// parceira), cadastrada como uma área nova, com a própria identidade
+// visual. Basta o arquivo existir em "templates/<nome da área>.jpg"
+// (só o Leonardo sobe esse arquivo, direto no repositório, seguindo o
+// mesmo molde/tamanho 1414x2000); áreas sem template próprio usam o
+// padrão (o da Atacado Martins).
+function caminhoTemplateDaArea(area) {
+  const nome = String(area || "").trim();
+  return nome ? `templates/${encodeURIComponent(nome)}.jpg` : CAMINHO_TEMPLATE_PADRAO;
+}
+async function carregarTemplateDaArea(area) {
+  const caminhoEspecifico = caminhoTemplateDaArea(area);
+  if (caminhoEspecifico !== CAMINHO_TEMPLATE_PADRAO) {
+    const imagemEspecifica = await carregarImageElement(caminhoEspecifico);
+    if (imagemEspecifica) return imagemEspecifica;
+  }
+  return carregarImageElement(CAMINHO_TEMPLATE_PADRAO);
+}
+
+// Foto do vendedor (redonda, anel dourado) desenhada do lado esquerdo do
+// cabeçalho, com o nome ao lado — mesmo padrão novo do Impala. A validade
+// continua do lado direito, igual já era.
+const VENDEDOR_FOTO_DIAMETRO = 100;
+const VENDEDOR_FOTO_Y_CENTRO = 80;
+const VENDEDOR_INDENT = 22;
+const TEMPLATE_TEXTO_TOPO = VENDEDOR_FOTO_Y_CENTRO + 10;
+// Respiro da validade em relação à borda da área útil (um "tabzinho" pra
+// não ficar colado, pedido pelo Leonardo).
+const TEMPLATE_TEXTO_INDENT = 22;
+
+// ---------- Grade da Imagem (PNG): tamanho calculado pelo conteúdo ----------
+// Em vez de dividir o espaço disponível em fileiras de altura fixa (o que
+// deixava sobra de espaço em branco embaixo de cada cartão), a altura do
+// cartão é calculada a partir do que ele realmente precisa (foto + nome +
+// código + etiqueta) — mesma lógica já usada no PDF. Isso permite caber 4
+// fileiras (16 itens) em vez de 3 (12), com a foto um pouco mais baixa que
+// larga (GRADE_FATOR_ALTURA_FOTO) em vez de quadrada.
+const GRADE_GAP_FOTO_NOME = 20;
+const GRADE_GAP_NOME_CODIGO = 16;
+const GRADE_GAP_CODIGO_BADGE = 14;
+const GRADE_LINHA_ALTURA_NOME = 18;
+const GRADE_MAX_LINHAS_NOME = 2;
+const GRADE_ALTURA_BADGE = 52;
+const GRADE_FATOR_ALTURA_FOTO = 0.93;
+// Mesma ideia, só que pro PDF (milímetros) — bem perto da proporção da
+// Imagem (0.93), ajustada pra caber as mesmas 4 fileiras (16 itens) por
+// página depois de igualar o espaço entre fileiras à mesma proporção da
+// Imagem (ver gutterV mais abaixo, na função do PDF).
+const PDF_FATOR_ALTURA_FOTO = 0.911;
+// A Imagem (PNG) é desenhada numa resolução 2x maior que o tamanho final
+// do molde (reduzida de volta ao exportar), só pra o texto ficar nítido —
+// o PDF é vetorial (sempre nítido), a Imagem é raster e precisa de mais
+// pixels reais.
+const PNG_ESCALA = 2;
+
+function calcularGradePng() {
+  const colunas = 4;
+  const gutterH = 30;
+  const gutterV = 22;
+  const padCard = 10;
+  const { esq: areaEsq, dir: areaDir, topo: areaTopo, base: areaBase } = TEMPLATE_AREA;
+  const larguraUtil = areaDir - areaEsq;
+  const alturaUtil = areaBase - areaTopo;
+  const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
+  const larguraFoto = larguraCard - 10 * 2;
+  const alturaImagem = larguraFoto * GRADE_FATOR_ALTURA_FOTO;
+
+  const alturaBlocoTexto =
+    GRADE_GAP_FOTO_NOME +
+    GRADE_MAX_LINHAS_NOME * GRADE_LINHA_ALTURA_NOME +
+    GRADE_GAP_NOME_CODIGO +
+    GRADE_GAP_CODIGO_BADGE;
+  const alturaCard = padCard + alturaImagem + alturaBlocoTexto + GRADE_ALTURA_BADGE + padCard;
+
+  const linhasGrade = Math.max(1, Math.floor((alturaUtil + gutterV) / (alturaCard + gutterV)));
+
+  return {
+    colunas, gutterH, gutterV, padCard, areaEsq, areaTopo, alturaUtil,
+    larguraCard, alturaCard, larguraFoto, alturaImagem,
+    linhasGrade, limite: colunas * linhasGrade,
+  };
+}
+
+// Quando o carrinho de itens marcados tem menos itens do que cabe na
+// grade, em vez de deixar a sobra toda embaixo (grade "grudada" no topo),
+// o espaço entre as fileiras fica sempre igual e o bloco inteiro é
+// centralizado verticalmente na área útil.
+function ajustarEspacamentoGradePng(grade, totalItens) {
+  const { colunas, gutterV, alturaCard, areaTopo, alturaUtil } = grade;
+  const linhasReais = Math.max(1, Math.ceil(totalItens / colunas));
+  const alturaBlocoGrade = linhasReais * alturaCard + (linhasReais - 1) * gutterV;
+  const areaTopoAjustada = areaTopo + Math.max(0, (alturaUtil - alturaBlocoGrade) / 2);
+  return { gutterV, areaTopo: areaTopoAjustada };
+}
+
+// Desenha a foto (redonda, anel dourado) + nome do vendedor no canvas do
+// PNG, do lado esquerdo do cabeçalho do molde.
+function desenharCabecalhoVendedorCanvas(ctx, imagemVendedor, nomeVendedor) {
+  const diam = VENDEDOR_FOTO_DIAMETRO;
+  const x = TEMPLATE_AREA.esq + VENDEDOR_INDENT;
+  const yCentro = VENDEDOR_FOTO_Y_CENTRO;
+  const y = yCentro - diam / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x + diam / 2, yCentro, diam / 2, 0, Math.PI * 2);
+  ctx.closePath();
+  if (imagemVendedor) {
+    ctx.clip();
+    desenharImagemPreenchendo(ctx, imagemVendedor, x, y, diam, diam);
+  } else {
+    ctx.fillStyle = "#F4F3EE";
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = "#d4af37";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(x + diam / 2, yCentro, diam / 2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  if (nomeVendedor) {
+    ctx.fillStyle = "#2A2925";
+    ctx.font = "600 15px 'Work Sans', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(nomeVendedor, x + diam + 18, yCentro + 10);
+  }
+}
+
+// Desenha uma grade de cartões de produto sobre o template (usada pelo
+// PNG e, futuramente, pelo PDF): cartão branco com sombra suave, foto
+// quadrada cortada sem esticar, nome em Montserrat itálico e o preço
+// numa etiqueta preta com brilho dourado, sempre ancorada no rodapé do
+// cartão — não se move de acordo com o tamanho do nome do produto.
+function desenharGradeDeCartoes(ctx, itens, imagensCarregadas, opcoes) {
+  const {
+    colunas, areaEsq, areaTopo, larguraCard, alturaCard, gutterH, gutterV,
+    padCard, larguraFoto, alturaImagem, comSombra,
+  } = opcoes;
+
+  itens.forEach((item, indice) => {
+    const coluna = indice % colunas;
+    const linha = Math.floor(indice / colunas);
+    const x = areaEsq + coluna * (larguraCard + gutterH);
+    const y = areaTopo + linha * (alturaCard + gutterV);
+
+    // Cartão branco, sombra suave (dá referência de profundidade sobre o template)
+    ctx.save();
+    if (comSombra) {
+      ctx.shadowColor = "rgba(20,18,14,0.18)";
+      ctx.shadowBlur = 16;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 5;
+    }
+    ctx.fillStyle = "#FFFFFF";
+    desenharRetanguloArredondado(ctx, x, y, larguraCard, alturaCard, 14);
+    ctx.fill();
+    ctx.restore();
+
+    // Foto (corte "preencher", sem esticar) — ou um fundo neutro, se não tiver foto salva
+    const imagemItem = imagensCarregadas.get(item.codigo);
+    if (imagemItem) {
+      ctx.save();
+      desenharRetanguloArredondado(ctx, x + padCard, y + padCard, larguraFoto, alturaImagem, 8);
+      ctx.clip();
+      desenharImagemPreenchendo(ctx, imagemItem, x + padCard, y + padCard, larguraFoto, alturaImagem);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = "#F4F3EE";
+      desenharRetanguloArredondado(ctx, x + padCard, y + padCard, larguraFoto, alturaImagem, 8);
+      ctx.fill();
     }
 
-    sucessoEl.textContent = `Acesso criado! Repasse o e-mail e a senha pra ${nome}.`;
-    sucessoEl.hidden = false;
-    document.getElementById("novo-acesso-nome").value = "";
-    document.getElementById("novo-acesso-area").value = "";
-    document.getElementById("novo-acesso-email").value = "";
-    document.getElementById("novo-acesso-senha").value = "";
-    await carregarListaAcessos();
+    // Preço — ancorado no final do cartão, etiqueta preta + brilho dourado
+    // (o "R$" já aparece separado, então usa só o número aqui)
+    const precoTexto = formatarPrecoSemPrefixo(item.preco);
+    const alturaBadge = 52;
+    const larguraBadge = larguraFoto;
+    const xBadge = x + padCard;
+    const yBadge = y + alturaCard - padCard - alturaBadge;
+
+    // Título + código — calculados de baixo pra cima, colados no preço
+    // (o espaço "sobrando" fica entre a foto e o texto, não entre o texto e o preço)
+    ctx.font = "600 17.1px 'Work Sans', sans-serif";
+    const textoCodigos = item.codigo_barras
+      ? `${item.codigo}  •  Barras ${item.codigo_barras}`
+      : `${item.codigo}`;
+    const linhaCodigos = quebrarTextoCanvas(ctx, textoCodigos, larguraFoto, 1)[0];
+
+    ctx.font = "italic 900 19.7px 'Montserrat', sans-serif";
+    const linhasNome = quebrarTextoCanvas(ctx, item.descricao, larguraFoto, 2);
+
+    const gapCodigoBadge = 14;
+    const gapNomeCodigo = 16;
+    const linhaAlturaNome = 18;
+
+    const yCodigo = yBadge - gapCodigoBadge;
+    const yUltimaLinhaNome = yCodigo - gapNomeCodigo;
+    const yPrimeiraLinhaNome = yUltimaLinhaNome - (linhasNome.length - 1) * linhaAlturaNome;
+
+    ctx.fillStyle = "#1E1E1E";
+    ctx.font = "italic 900 19.7px 'Montserrat', sans-serif";
+    linhasNome.forEach((linha, li) => ctx.fillText(linha, x + padCard, yPrimeiraLinhaNome + li * linhaAlturaNome));
+
+    ctx.fillStyle = "#1E1E1E";
+    ctx.font = "600 17.1px 'Work Sans', sans-serif";
+    ctx.fillText(linhaCodigos, x + padCard, yCodigo);
+
+    // Selo vazado (contorno preto, fundo branco) — mesmo efeito de etiqueta
+    // de preço, só que sem a área preta sólida, pra gastar bem menos tinta
+    // preta na hora de imprimir (pedido explícito dos vendedores).
+    ctx.lineWidth = 2.6;
+    ctx.strokeStyle = "#161513";
+    ctx.fillStyle = "#FFFFFF";
+    desenharRetanguloArredondado(ctx, xBadge, yBadge, larguraBadge, alturaBadge, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#161513";
+    ctx.font = "700 15.7px 'Work Sans', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("R$", xBadge + 11, yBadge + 16);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#78756E";
+    ctx.fillText("unid", xBadge + larguraBadge - 11, yBadge + 16);
+
+    ctx.fillStyle = "#161513";
+    ctx.font = "italic 900 35.6px 'Montserrat', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(precoTexto, x + larguraCard / 2, yBadge + alturaBadge - 14);
+    ctx.textAlign = "left";
+  });
+}
+
+document.getElementById("btn-gerar-png").addEventListener("click", async () => {
+  const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
+  if (itensMarcados.length === 0) return;
+
+  // Mesma ordenação usada no PDF (categoria e depois descrição, alfabética),
+  // só que aqui numa grade só, sem títulos de categoria.
+  const itensOrdenados = agruparPorCategoriaOrdenado(itensMarcados).flatMap((g) => g.itens);
+
+  const grade = calcularGradePng();
+  if (itensOrdenados.length > grade.limite) {
+    alert(
+      `Pra gerar a imagem, marque no máximo ${grade.limite} itens por vez.\n\n` +
+      `Gera a imagem com esses, desmarca eles e marca os próximos.`
+    );
+    return;
+  }
+
+  const botao = document.getElementById("btn-gerar-png");
+  botao.disabled = true;
+
+  try {
+    const dataUrlsPorCodigo = new Map();
+    await Promise.all(
+      itensOrdenados
+        .filter((i) => i.foto_url)
+        .map(async (i) => {
+          const dataUrl = await carregarImagemComoDataUrl(i.foto_url);
+          if (dataUrl) dataUrlsPorCodigo.set(i.codigo, dataUrl);
+        })
+    );
+
+    const imagensCarregadas = new Map();
+    await Promise.all(
+      Array.from(dataUrlsPorCodigo.entries()).map(async ([codigo, dataUrl]) => {
+        const img = await carregarImageElement(dataUrl);
+        if (img) imagensCarregadas.set(codigo, img);
+      })
+    );
+
+    const imagemTemplate = await carregarTemplateDaArea(AREA_VENDEDOR);
+
+    const fotoVendedorDataUrl = VENDEDOR_FOTO_URL
+      ? await carregarImagemComoDataUrl(VENDEDOR_FOTO_URL)
+      : null;
+    const imagemVendedor = fotoVendedorDataUrl
+      ? await carregarImageElement(fotoVendedorDataUrl)
+      : null;
+
+    if (document.fonts && document.fonts.ready) {
+      try { await document.fonts.ready; } catch (erroFontes) { /* segue com a fonte padrão */ }
+    }
+
+    const {
+      colunas, gutterH, gutterV, padCard, areaEsq, areaTopo, alturaUtil,
+      larguraCard, alturaCard, larguraFoto, alturaImagem,
+    } = grade;
+    const areaDir = TEMPLATE_AREA.dir;
+    const yLinhaVendedor = TEMPLATE_TEXTO_TOPO;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = TEMPLATE_LARGURA * PNG_ESCALA;
+    canvas.height = TEMPLATE_ALTURA * PNG_ESCALA;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(PNG_ESCALA, PNG_ESCALA);
+
+    // Fundo: a imagem-modelo (ou um fundo branco liso, se ela não carregar)
+    if (imagemTemplate) {
+      ctx.drawImage(imagemTemplate, 0, 0, TEMPLATE_LARGURA, TEMPLATE_ALTURA);
+    } else {
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, TEMPLATE_LARGURA, TEMPLATE_ALTURA);
+    }
+
+    // Vendedor (foto + nome, à esquerda) e período (à direita)
+    const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
+    // No PDF/Imagem usa sempre o texto completo ("Ofertas de DD/MM a DD/MM"),
+    // mesmo que na tela o rótulo tenha ficado mais curto pra caber no celular.
+    const elTextoSemana = document.getElementById("texto-semana");
+    const textoSemana = (elTextoSemana.dataset.completo || elTextoSemana.textContent || "").trim();
+    desenharCabecalhoVendedorCanvas(ctx, imagemVendedor, nomeVendedor);
+    if (textoSemana) {
+      ctx.fillStyle = "#2A2925";
+      ctx.font = "600 15px 'Work Sans', sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(textoSemana, areaDir - TEMPLATE_TEXTO_INDENT, yLinhaVendedor);
+      ctx.textAlign = "left";
+    }
+
+    const { gutterV: gutterVAjustado, areaTopo: areaTopoAjustada } = ajustarEspacamentoGradePng(
+      { colunas, gutterV, alturaCard, areaTopo, alturaUtil },
+      itensOrdenados.length
+    );
+
+    desenharGradeDeCartoes(ctx, itensOrdenados, imagensCarregadas, {
+      colunas, areaEsq, areaTopo: areaTopoAjustada, larguraCard, alturaCard,
+      gutterH, gutterV: gutterVAjustado, padCard, larguraFoto, alturaImagem,
+      comSombra: true,
+    });
+
+    const dataArquivo = new Date().toISOString().slice(0, 10);
+    const link = document.createElement("a");
+    link.download = `ofertas-da-semana-${dataArquivo}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
   } catch (erro) {
-    erroEl.textContent = erro.message;
-    erroEl.hidden = false;
+    console.error("[Ofertas da Semana] Erro ao gerar imagem:", erro);
+    alert("Não consegui gerar a imagem. Tenta de novo.");
   } finally {
     botao.disabled = false;
   }
 });
 
-// ---------------- UTIL ----------------
-function prepararLinhaParaArea(masterRow, area, camposNovos) {
-  const linha = { ...masterRow, ...camposNovos, area };
-  delete linha.criado_em;
-  return linha;
-}
+document.getElementById("btn-gerar-pdf").addEventListener("click", async () => {
+  const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
+  if (itensMarcados.length === 0) return;
 
-// Ponto de partida pra qualquer alteração (preço, negociação ou visível) de
-// um código numa área: usa a linha que essa área já tem (se já tiver uma),
-// senão cai pra linha da base — assim uma mudança nunca apaga por engano
-// algo que a área já tinha configurado diferente da base.
-function linhaDaAreaOuBase(item, areaMap) {
-  return (areaMap && areaMap.get(item.codigo)) || item;
-}
+  const botao = document.getElementById("btn-gerar-pdf");
+  const textoOriginal = botao.textContent;
+  botao.disabled = true;
+  botao.textContent = "Gerando…";
 
-// Depois de salvar com sucesso, atualiza o "areaMap" em memória com a linha
-// que acabou de ir pro banco — assim, se a pessoa mexer noutra coisa do
-// mesmo item logo em seguida (sem trocar de aba/recarregar), o painel já
-// enxerga o valor certo em vez do estado de antes da última ação.
-function atualizarAreaMapComLinhasSalvas(areaMap, linhasSalvas) {
-  if (!areaMap) return;
-  linhasSalvas.forEach((linha) => {
-    areaMap.set(linha.codigo, { ...(areaMap.get(linha.codigo) || {}), ...linha });
+  try {
+    // Mesma ordenação usada na Imagem (categoria e depois descrição,
+    // alfabética), numa grade só, contínua, sem títulos de categoria
+    // (igual ao Impala — o pedido dentro de cada categoria continua
+    // agrupado, só não aparece mais o nome da categoria como título).
+    const itensOrdenados = agruparPorCategoriaOrdenado(itensMarcados).flatMap((g) => g.itens);
+
+    // Carrega as fotos dos itens que tiverem, em paralelo, antes de montar
+    // o PDF (os itens sem foto salva simplesmente não mostram imagem).
+    const dataUrlsPorCodigo = new Map();
+    await Promise.all(
+      itensOrdenados
+        .filter((i) => i.foto_url)
+        .map(async (i) => {
+          const dataUrl = await carregarImagemComoDataUrl(i.foto_url);
+          if (dataUrl) dataUrlsPorCodigo.set(i.codigo, dataUrl);
+        })
+    );
+    const imagensCarregadas = new Map();
+    await Promise.all(
+      Array.from(dataUrlsPorCodigo.entries()).map(async ([codigo, dataUrl]) => {
+        const img = await carregarImageElement(dataUrl);
+        if (img) imagensCarregadas.set(codigo, img);
+      })
+    );
+
+    // Imagem-modelo (mesma da Imagem, já escolhida pela área do vendedor) —
+    // convertida pra data URL, porque o jsPDF precisa de base64/URL pra
+    // inserir a imagem, não do elemento <img>.
+    const imagemTemplateEl = await carregarTemplateDaArea(AREA_VENDEDOR);
+    let templateDataUrl = null;
+    if (imagemTemplateEl) {
+      const canvasTemplate = document.createElement("canvas");
+      canvasTemplate.width = imagemTemplateEl.width;
+      canvasTemplate.height = imagemTemplateEl.height;
+      canvasTemplate.getContext("2d").drawImage(imagemTemplateEl, 0, 0);
+      templateDataUrl = canvasTemplate.toDataURL("image/jpeg", 0.92);
+    }
+
+    // Foto do vendedor + moldura dourada, prontas como uma imagem circular
+    // só (recortada aqui, porque o jsPDF não recorta imagem sozinho).
+    let fotoVendedorDataUrl = null;
+    if (VENDEDOR_FOTO_URL) {
+      const fotoVendedorUrlData = await carregarImagemComoDataUrl(VENDEDOR_FOTO_URL);
+      const imagemVendedorEl = fotoVendedorUrlData ? await carregarImageElement(fotoVendedorUrlData) : null;
+      if (imagemVendedorEl) {
+        const diamPx = 240;
+        const canvasFotoVendedor = document.createElement("canvas");
+        canvasFotoVendedor.width = diamPx;
+        canvasFotoVendedor.height = diamPx;
+        const ctxFotoVendedor = canvasFotoVendedor.getContext("2d");
+        ctxFotoVendedor.save();
+        ctxFotoVendedor.beginPath();
+        ctxFotoVendedor.arc(diamPx / 2, diamPx / 2, diamPx / 2, 0, Math.PI * 2);
+        ctxFotoVendedor.closePath();
+        ctxFotoVendedor.clip();
+        desenharImagemPreenchendo(ctxFotoVendedor, imagemVendedorEl, 0, 0, diamPx, diamPx);
+        ctxFotoVendedor.restore();
+        fotoVendedorDataUrl = canvasFotoVendedor.toDataURL("image/png");
+      }
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const larguraPagina = 210;
+    const alturaPagina = 297;
+
+    // Área "segura" da imagem-modelo (as mesmas medidas usadas na Imagem),
+    // convertida de pixels pra milímetros.
+    const escalaX = larguraPagina / TEMPLATE_LARGURA;
+    const escalaY = alturaPagina / TEMPLATE_ALTURA;
+    const areaEsq = TEMPLATE_AREA.esq * escalaX;
+    const areaDir = TEMPLATE_AREA.dir * escalaX;
+    const areaTopo = TEMPLATE_AREA.topo * escalaY;
+    const areaBase = TEMPLATE_AREA.base * escalaY;
+    const indentTexto = TEMPLATE_TEXTO_INDENT * escalaX;
+    const margemX = areaEsq;
+    const larguraUtil = areaDir - areaEsq;
+
+    // Desenha a imagem-modelo cobrindo a página inteira — chamada de novo
+    // a cada página nova (addPage não mantém o que já foi desenhado).
+    function desenharFundo() {
+      if (templateDataUrl) {
+        doc.addImage(templateDataUrl, "JPEG", 0, 0, larguraPagina, alturaPagina);
+      }
+    }
+
+    // Vendedor (foto + nome, esquerda) e período (direita) — desenhado só
+    // na primeira página (decisão do Leonardo: num PDF fica melhor assim,
+    // diferente da Imagem, que é uma folha única).
+    const diamVendedorMm = VENDEDOR_FOTO_DIAMETRO * escalaX;
+    const xFotoVendedor = (TEMPLATE_AREA.esq + VENDEDOR_INDENT) * escalaX;
+    const yCentroVendedorMm = VENDEDOR_FOTO_Y_CENTRO * escalaY;
+    const yFotoVendedor = yCentroVendedorMm - diamVendedorMm / 2;
+    const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
+    // No PDF/Imagem usa sempre o texto completo ("Ofertas de DD/MM a DD/MM"),
+    // mesmo que na tela o rótulo tenha ficado mais curto pra caber no celular.
+    const elTextoSemana = document.getElementById("texto-semana");
+    const textoSemana = (elTextoSemana.dataset.completo || elTextoSemana.textContent || "").trim();
+
+    function desenharCabecalhoVendedor() {
+      if (fotoVendedorDataUrl) {
+        doc.addImage(fotoVendedorDataUrl, "PNG", xFotoVendedor, yFotoVendedor, diamVendedorMm, diamVendedorMm);
+      }
+      doc.setDrawColor(212, 175, 55);
+      doc.setLineWidth(0.6);
+      doc.circle(xFotoVendedor + diamVendedorMm / 2, yCentroVendedorMm, diamVendedorMm / 2, "S");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(42, 41, 37);
+      if (nomeVendedor) doc.text(nomeVendedor, xFotoVendedor + diamVendedorMm + 4, yCentroVendedorMm + 1.6);
+      if (textoSemana) doc.text(textoSemana, areaDir - indentTexto, yCentroVendedorMm + 1.6, { align: "right" });
+    }
+
+    desenharFundo();
+    desenharCabecalhoVendedor();
+
+    let y = areaTopo;
+
+    const colunas = 4;
+    const gutterH = 4;
+    const gutterV = 3.3;
+    const larguraCard = (larguraUtil - gutterH * (colunas - 1)) / colunas;
+    const padCard = 2.2;
+    const larguraFoto = larguraCard - padCard * 2;
+    // Foto um pouco mais baixa que larga (em vez de quadrada) — mesma
+    // regra da Imagem, é o que abre espaço pra 4ª fileira (16 itens por
+    // página em vez de 12).
+    const alturaFoto = larguraFoto * PDF_FATOR_ALTURA_FOTO;
+    const alturaBadge = 9.6;
+    const alturaTextos = 12.5; // nome (até 2 linhas) + código, entre a foto e a etiqueta
+    const alturaCard = padCard + alturaFoto + alturaTextos + alturaBadge + padCard;
+
+    // Recorta cada foto (sem esticar) já no formato final (largura x
+    // altura, não mais um quadrado) — mesma lógica de corte usada na
+    // Imagem (desenharImagemPreenchendo), só que desenhando num canvas à
+    // parte em vez de direto no PDF (o jsPDF não recorta imagem sozinho).
+    const larguraFotoPx = Math.round(larguraFoto * (300 / 25.4)); // ~300dpi
+    const alturaFotoPx = Math.round(alturaFoto * (300 / 25.4));
+    const fotosRecortadas = new Map();
+    imagensCarregadas.forEach((img, codigo) => {
+      const canvasFoto = document.createElement("canvas");
+      canvasFoto.width = larguraFotoPx;
+      canvasFoto.height = alturaFotoPx;
+      desenharImagemPreenchendo(canvasFoto.getContext("2d"), img, 0, 0, larguraFotoPx, alturaFotoPx);
+      fotosRecortadas.set(codigo, canvasFoto.toDataURL("image/jpeg", 0.9));
+    });
+
+    // Grade contínua, sem separar por categoria — igual já é feito na
+    // Imagem (o pedido dentro de cada categoria continua agrupado, só não
+    // aparece mais o nome da categoria como título entre os grupos).
+    let coluna = 0;
+    itensOrdenados.forEach((item) => {
+      if (coluna === 0 && y + alturaCard > areaBase) {
+        doc.addPage();
+        desenharFundo();
+        y = areaTopo;
+      }
+
+      const x = margemX + coluna * (larguraCard + gutterH);
+
+      // Cartão branco com borda leve (sem sombra — o jsPDF não faz blur)
+      doc.setDrawColor(225, 224, 218);
+      doc.setFillColor(255, 255, 255);
+      doc.setLineWidth(0.2);
+      doc.roundedRect(x, y, larguraCard, alturaCard, 1.8, 1.8, "FD");
+
+      // Foto (recorte já pronto, sem esticar) ou fundo neutro
+      const fotoDataUrl = fotosRecortadas.get(item.codigo);
+      if (fotoDataUrl) {
+        try {
+          doc.addImage(fotoDataUrl, "JPEG", x + padCard, y + padCard, larguraFoto, alturaFoto);
+        } catch (erro) {
+          console.error("[Ofertas da Semana] Erro ao inserir imagem no PDF:", erro);
+        }
+      } else {
+        doc.setFillColor(244, 243, 238);
+        doc.rect(x + padCard, y + padCard, larguraFoto, alturaFoto, "F");
+      }
+
+      // Preço — etiqueta preta ancorada no rodapé do cartão (não se
+      // move de acordo com o tamanho do nome do produto). O "R$" já
+      // aparece separado, então usa só o número aqui.
+      const precoTexto = formatarPrecoSemPrefixo(item.preco);
+      const larguraBadge = larguraFoto;
+      const xBadge = x + padCard;
+      const yBadge = y + alturaCard - padCard - alturaBadge;
+
+      // Nome + código, calculados de baixo pra cima, colados na etiqueta
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.2);
+      const textoCodigos = item.codigo_barras
+        ? `${item.codigo}  •  Barras ${item.codigo_barras}`
+        : `${item.codigo}`;
+      const linhaCodigos = doc.splitTextToSize(textoCodigos, larguraFoto)[0];
+
+      doc.setFont("helvetica", "bolditalic");
+      doc.setFontSize(8.3);
+      const todasLinhasNome = doc.splitTextToSize(item.descricao, larguraFoto);
+      const linhasNome = todasLinhasNome.slice(0, 2);
+      if (todasLinhasNome.length > 2 && linhasNome[1].length > 1) {
+        linhasNome[1] = linhasNome[1].slice(0, -1) + "…";
+      }
+
+      const gapCodigoBadge = 2.6;
+      const gapNomeCodigo = 3.4;
+      const linhaAlturaNome = 3.4;
+
+      const yCodigo = yBadge - gapCodigoBadge;
+      const yUltimaLinhaNome = yCodigo - gapNomeCodigo;
+      const yPrimeiraLinhaNome = yUltimaLinhaNome - (linhasNome.length - 1) * linhaAlturaNome;
+
+      doc.setTextColor(30, 30, 30);
+      doc.setFont("helvetica", "bolditalic");
+      doc.setFontSize(8.3);
+      linhasNome.forEach((linha, li) => doc.text(linha, x + padCard, yPrimeiraLinhaNome + li * linhaAlturaNome));
+
+      doc.setTextColor(30, 30, 30);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.2);
+      doc.text(linhaCodigos, x + padCard, yCodigo);
+
+      // Selo vazado (contorno preto, fundo branco) — mesmo efeito de etiqueta
+      // de preço, só que sem a área preta sólida, pra gastar bem menos tinta
+      // preta na hora de imprimir (pedido explícito dos vendedores).
+      doc.setDrawColor(22, 21, 19);
+      doc.setFillColor(255, 255, 255);
+      doc.setLineWidth(0.35);
+      doc.roundedRect(xBadge, yBadge, larguraBadge, alturaBadge, 1.6, 1.6, "FD");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.6);
+      doc.setTextColor(22, 21, 19);
+      doc.text("R$", xBadge + 2, yBadge + 3.4);
+      doc.setTextColor(120, 117, 110);
+      doc.text("unid", xBadge + larguraBadge - 2, yBadge + 3.4, { align: "right" });
+
+      doc.setFont("helvetica", "bolditalic");
+      doc.setFontSize(15);
+      doc.setTextColor(22, 21, 19);
+      doc.text(precoTexto, x + larguraCard / 2, yBadge + alturaBadge - 3, { align: "center" });
+
+      coluna++;
+      if (coluna === colunas) {
+        coluna = 0;
+        y += alturaCard + gutterV;
+      }
+    });
+
+    const dataArquivo = new Date().toISOString().slice(0, 10);
+    doc.save(`ofertas-da-semana-${dataArquivo}.pdf`);
+  } catch (erro) {
+    console.error("[Ofertas da Semana] Erro ao gerar PDF:", erro);
+    alert("Não consegui gerar o PDF. Tenta de novo.");
+  } finally {
+    botao.disabled = false;
+    botao.textContent = textoOriginal;
+  }
+});
+
+// Botão completo do rodapé do catálogo: só abre o carrinho (igual aos
+// catálogos Impala/Nadir/Havaianas) — o envio pelo WhatsApp agora acontece
+// de dentro da tela do carrinho (btn-enviar-pedido, mais abaixo).
+document.getElementById("btn-ir-carrinho").addEventListener("click", () => {
+  if (totalItensCarrinho() === 0) return;
+  abrirCarrinho();
+});
+document.getElementById("btn-voltar-carrinho").addEventListener("click", voltarDoCarrinho);
+
+// Envio do pedido pelo WhatsApp, de dentro da tela do carrinho. Agrupa por
+// categoria (mesmo agrupamento mostrado na tela), com o aviso de pedido
+// mínimo embaixo do nome de cada grupo que tiver — e, no lugar de um total
+// somado, o mesmo aviso que já aparece no rodapé da tela do carrinho.
+document.getElementById("btn-enviar-pedido").addEventListener("click", () => {
+  const grupos = agruparCarrinhoPorCategoria();
+  if (grupos.length === 0 || !VENDEDOR_WHATSAPP) return;
+
+  const nomeLoja = document.getElementById("input-loja").value.trim();
+
+  const blocos = grupos.map((grupo) => {
+    const minimo = pedidoMinimoDaCategoria(grupo.categoria);
+    const tituloGrupo = tituloGrupoCarrinho(grupo.categoria).toUpperCase();
+    const linhas = grupo.itens.map((i) => `Cód: ${i.codigo} | Qtd: ${QTY.get(i.codigo)} | ${formatarPreco(i.preco)}`);
+    return `- *${tituloGrupo}*${minimo ? ` (Pedido mínimo ${minimo})` : ""}\n${linhas.join("\n")}`;
   });
+
+  const mensagem =
+    `*${tituloPrePedido("OFERTAS DA SEMANA")}*\n` +
+    (nomeLoja ? `_Loja: ${nomeLoja}_\n` : "") +
+    `_Olá! tenho interesse nestes itens:_\n\n` +
+    blocos.join("\n\n") +
+    `\n\n_(Preço final combinado direto com o vendedor, considerando a fração mínima de cada item.)_`;
+
+  const url = `https://wa.me/${VENDEDOR_WHATSAPP}?text=${encodeURIComponent(mensagem)}`;
+  window.open(url, "_blank");
+
+  // Guarda a hora do envio — ao voltar pra essa página (ou reabrir o link
+  // mais tarde), isso é o que dispara a pergunta "já enviou esses itens?".
+  ENVIADO_EM = Date.now();
+  salvarItensMarcados();
+});
+
+// Lixeira do cabeçalho do carrinho — desmarca tudo de uma vez, com confirmação.
+document.getElementById("btn-limpar-itens").addEventListener("click", async () => {
+  const totalItens = Array.from(QTY.values()).filter((q) => q > 0).length;
+  if (totalItens === 0) return;
+
+  const confirmou = await perguntar({
+    titulo: `Desmarcar todos os ${totalItens} ${totalItens === 1 ? "item marcado" : "itens marcados"}?`,
+    simTexto: "Sim, desmarcar",
+    naoTexto: "Cancelar",
+  });
+  if (confirmou) {
+    QTY.clear();
+    aposMudarItens();
+    renderizarCarrinho();
+  }
+});
+
+// "Gerar PDF do pré-pedido" — cópia simples (só texto, sem molde/fotos) dos
+// mesmos itens marcados que já vão pro WhatsApp, com código, quantidade e
+// preço de cada um. Serve de backup pra quando o cliente não consegue usar
+// o WhatsApp Web no computador dele, mas ainda quer baixar/mandar um PDF
+// com os itens de interesse.
+document.getElementById("btn-pdf-pedido").addEventListener("click", () => {
+  const itensMarcados = TODOS_ITENS.filter((i) => (QTY.get(i.codigo) || 0) > 0);
+  if (itensMarcados.length === 0) return;
+
+  const botao = document.getElementById("btn-pdf-pedido");
+  botao.disabled = true;
+
+  try {
+    // Mesmo agrupamento mostrado na tela do carrinho (por categoria, na
+    // ordem das abas) — não o agrupamento alfabético usado no PNG/PDF-molde.
+    const grupos = agruparCarrinhoPorCategoria();
+
+    const nomeLoja = document.getElementById("input-loja").value.trim();
+    const nomeVendedor = (document.getElementById("nome-vendedor").textContent || "").trim();
+    // No PDF/Imagem usa sempre o texto completo ("Ofertas de DD/MM a DD/MM"),
+    // mesmo que na tela o rótulo tenha ficado mais curto pra caber no celular.
+    const elTextoSemana = document.getElementById("texto-semana");
+    const textoSemana = (elTextoSemana.dataset.completo || elTextoSemana.textContent || "").trim();
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const margemX = 18;
+    const larguraPagina = 210;
+    const larguraUtil = larguraPagina - margemX * 2;
+    const areaBase = 280;
+    let y = 20;
+
+    function novaPaginaSeNecessario(alturaNecessaria) {
+      if (y + alturaNecessaria > areaBase) {
+        doc.addPage();
+        y = 20;
+      }
+    }
+
+    doc.setFont("helvetica", "bolditalic");
+    doc.setFontSize(18);
+    doc.setTextColor(14, 107, 84);
+    doc.text(tituloPrePedido("Pré-pedido — Ofertas da Semana"), margemX, y);
+    y += 8;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(90, 90, 90);
+    const dataTexto = new Date().toLocaleDateString("pt-BR");
+    doc.text(`Vendedor: ${nomeVendedor || "-"}   •   Data: ${dataTexto}`, margemX, y);
+    y += 6;
+    if (nomeLoja) {
+      doc.text(`Loja: ${nomeLoja}`, margemX, y);
+      y += 6;
+    }
+    if (textoSemana) {
+      doc.text(textoSemana, margemX, y);
+      y += 6;
+    }
+    y += 5;
+
+    grupos.forEach((grupo) => {
+      novaPaginaSeNecessario(14);
+
+      const minimo = pedidoMinimoDaCategoria(grupo.categoria);
+      doc.setFont("helvetica", "bolditalic");
+      doc.setFontSize(12);
+      doc.setTextColor(11, 87, 68);
+      doc.text(tituloGrupoCarrinho(grupo.categoria).toUpperCase() + (minimo ? `  (Pedido mínimo ${minimo})` : ""), margemX, y);
+      y += 2.5;
+
+      doc.setDrawColor(220, 230, 226);
+      doc.setLineWidth(0.3);
+      doc.line(margemX, y, margemX + larguraUtil, y);
+      y += 6.5;
+
+      grupo.itens.forEach((item) => {
+        novaPaginaSeNecessario(9);
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(40, 40, 40);
+        const descricaoLinha = doc.splitTextToSize(item.descricao, larguraUtil * 0.62)[0];
+        doc.text(descricaoLinha, margemX, y);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(130, 130, 130);
+        doc.text(`Cód. ${item.codigo}  •  Qtd: ${QTY.get(item.codigo)}`, margemX, y + 4.4);
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10.5);
+        doc.setTextColor(14, 107, 84);
+        doc.text(formatarPreco(item.preco), margemX + larguraUtil, y, { align: "right" });
+
+        y += 9.5;
+      });
+
+      y += 3.5;
+    });
+
+    novaPaginaSeNecessario(10);
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(8.5);
+    doc.setTextColor(140, 140, 140);
+    doc.text("Preços sujeitos a confirmação — o pedido é combinado direto com o vendedor.", margemX, y);
+
+    const dataArquivo = new Date().toISOString().slice(0, 10);
+    doc.save(`pre-pedido-ofertas-da-semana-${dataArquivo}.pdf`);
+  } catch (erro) {
+    console.error("[Ofertas da Semana] Erro ao gerar PDF do pedido:", erro);
+    alert("Não consegui gerar o PDF. Tenta de novo.");
+  } finally {
+    botao.disabled = false;
+  }
+});
+
+// ---------------- BOOT ----------------
+async function iniciar() {
+  const slug = pegarSlugDaUrl();
+  if (!slug) {
+    mostrarEstado("tela-erro");
+    return;
+  }
+
+  CHAVE_GUARDADOS = `ofertas-itens-marcados:${slug}`;
+
+  registrarVisita(slug);
+
+  let vendedor;
+  try {
+    vendedor = await buscarVendedor(slug);
+  } catch (erro) {
+    console.error("[Ofertas da Semana] Erro ao buscar vendedor:", erro);
+    mostrarEstado("tela-erro");
+    return;
+  }
+
+  if (!vendedor) {
+    mostrarEstado("tela-erro");
+    return;
+  }
+
+  if (!vendedor.ativo) {
+    const texto = encodeURIComponent("Olá! Meu catálogo de Ofertas da Semana está pausado, gostaria de regularizar o acesso.");
+    document.getElementById("btn-pausado-whatsapp").href = `https://wa.me/${PLATAFORMA.whatsapp}?text=${texto}`;
+    mostrarEstado("tela-pausado");
+    return;
+  }
+
+  VENDEDOR_WHATSAPP = vendedor.whatsapp;
+  AREA_VENDEDOR = vendedor.area || "SC";
+  VENDEDOR_FOTO_URL = vendedor.foto_url || null;
+  document.getElementById("nome-vendedor").textContent = vendedor.nome;
+
+  const fotoEl = document.getElementById("foto-vendedor");
+  if (vendedor.foto_url) {
+    fotoEl.style.backgroundImage = `url(${vendedor.foto_url})`;
+    fotoEl.textContent = "";
+  } else {
+    fotoEl.textContent = iniciaisDoNome(vendedor.nome);
+  }
+
+  let oferta;
+  try {
+    oferta = await buscarOfertaAtual(vendedor.area || "SC");
+  } catch (erro) {
+    console.error("[Ofertas da Semana] Erro ao buscar itens:", erro);
+    mostrarEstado("tela-erro");
+    return;
+  }
+
+  if (!oferta.itens || oferta.itens.length === 0) {
+    mostrarEstado("tela-vazio");
+    return;
+  }
+
+  TODOS_ITENS = oferta.itens;
+  // Abre em "Martins" por padrão; se esse vendedor não tiver nenhum item
+  // Martins essa semana (só parceiro), abre direto em "Parceiros".
+  GRUPO_ATIVO = categoriasDoGrupo("martins").length > 0 ? "martins" : "parceiros";
+  renderizarAbasGrupo();
+  // Primeira categoria com item do grupo já abre selecionada (sem aba "Todos").
+  CATEGORIA_ATIVA = categoriasDoGrupo(GRUPO_ATIVO)[0] || null;
+  {
+    // Na tela mostra só os dias, pra caber bem na barra em celulares pequenos.
+    // No PDF/Imagem gerados continua saindo o texto completo de sempre.
+    // Martins e Parceiros agora podem ter datas diferentes (cada um é
+    // atualizado na sua própria caixa no Painel de Preços) — quando as 2
+    // datas não coincidem, mostra as duas separadas (pedido do Leonardo em
+    // 19/11/2026), em vez de mostrar só a do Martins e esconder a do
+    // Parceiros.
+    const periodos = oferta.periodoPorGrupo || {};
+    const pMartins = periodos.martins;
+    const pParceiros = periodos.parceiros;
+    const textoPeriodo = (p) => `${formatarDataCurta(p.semanaInicio)} a ${formatarDataCurta(p.semanaFim)}`;
+    const mesmaData =
+      pMartins && pParceiros && pMartins.semanaInicio === pParceiros.semanaInicio && pMartins.semanaFim === pParceiros.semanaFim;
+
+    const elTextoSemana = document.getElementById("texto-semana");
+    if (pMartins && pParceiros && !mesmaData) {
+      elTextoSemana.textContent = `Martins: ${textoPeriodo(pMartins)} · Parceiros: ${textoPeriodo(pParceiros)}`;
+      elTextoSemana.dataset.completo = `Martins: ofertas de ${textoPeriodo(pMartins)} · Parceiros: ofertas de ${textoPeriodo(pParceiros)}`;
+    } else {
+      const p = pMartins || pParceiros;
+      elTextoSemana.textContent = p ? textoPeriodo(p) : "";
+      elTextoSemana.dataset.completo = p ? `Ofertas de ${textoPeriodo(p)}` : "";
+    }
+  }
+
+  carregarItensMarcados();
+
+  renderizarAbas();
+  renderizarItens();
+  atualizarRodape();
+  mostrarEstado("app");
+
+  verificarPerguntaEnvio();
+
+  // Tour guiado: tocar na foto do vendedor abre o passo a passo; na 1ª
+  // visita naquele celular aparece a dica "Toque na minha foto...".
+  iniciarTourGuiado();
 }
 
-// Junta a mensagem principal do erro com a "dica" e os "detalhes" que o
-// Supabase manda (quando manda) — a mensagem sozinha às vezes é genérica
-// demais pra entender o que realmente bloqueou o salvamento.
-function detalharErro(erro) {
-  const partes = [erro.message];
-  if (erro.details) partes.push(`Detalhes: ${erro.details}`);
-  if (erro.hint) partes.push(`Dica: ${erro.hint}`);
-  if (erro.code) partes.push(`Código: ${erro.code}`);
-  return partes.join("\n");
-}
-
-function marcarSalvo(cartaoEl) {
-  const marca = cartaoEl.querySelector(".item-salvando");
-  marca.hidden = false;
-  setTimeout(() => { marca.hidden = true; }, 1800);
-}
-
-function formatarReais(valor) {
-  if (valor == null) return "";
-  return "R$ " + Number(valor).toFixed(2).replace(".", ",");
+function iniciaisDoNome(nome) {
+  return (nome || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase();
 }
 
 function escapeHtml(texto) {
@@ -723,3 +1938,513 @@ function escapeHtml(texto) {
 function escapeAttr(texto) {
   return escapeHtml(texto);
 }
+
+// ============================================================
+// TOUR GUIADO (toque na foto do vendedor)
+// ============================================================
+// O próprio vendedor "explica" o catálogo: a tela escurece, só o item da vez
+// fica aceso, e um balão de fala com a fotinha dele explica pra que serve.
+// Pensado pro cliente final (o link é o mesmo pra cliente e vendedor).
+// - Abre a qualquer momento tocando na foto do vendedor (tem um "?" no canto).
+// - Na 1ª visita naquele celular, aparece só uma dica "Toque na minha foto e
+//   eu te mostro como funciona" — ela some no 1º toque e não volta mais.
+// O tour não mexe no carrinho nem em nada do catálogo: só mostra e explica.
+const CHAVE_DICA_FOTO = "ofertas-dica-foto-vista";
+let TOUR_ATIVO = false;
+let TOUR_PASSO = 0;
+let TOUR_PASSOS = [];
+let DICA_FOTO_ABERTA = false;
+
+function tourLerStorage(chave) { try { return localStorage.getItem(chave); } catch (e) { return null; } }
+function tourGravarStorage(chave, valor) { try { localStorage.setItem(chave, valor); } catch (e) { /* modo privado: segue sem guardar */ } }
+
+function primeiroNomeVendedor() {
+  const nome = document.getElementById("nome-vendedor").textContent || "";
+  return String(nome).trim().split(/\s+/)[0] || "seu vendedor";
+}
+
+// Os 7 passos — textos na voz do vendedor (sem "o"/"a" antes do nome, pra
+// servir pra vendedor e vendedora). No Ofertas: abas Martins/Parceiros +
+// abas de categoria, o card começa com "Tenho interesse", e a barra do
+// carrinho é 1 passo só (não 2) — aprovados pelo Leonardo em 14/11/2026.
+function montarPassosTour() {
+  return [
+    {
+      alvo: () => document.getElementById("vendedor-foto-wrap"), redondo: true,
+      texto: () => `Oi! Eu sou <b>${escaparHtml(primeiroNomeVendedor())}</b> e vou te mostrar rapidinho como fazer seu pedido aqui.`,
+    },
+    {
+      alvo: () => document.getElementById("abas-grupo-tabs"),
+      texto: () => `Aqui você escolhe entre as ofertas do <b>Martins</b> e as dos <b>Parceiros</b>.`,
+    },
+    {
+      alvo: () => document.getElementById("categoria-tabs"),
+      texto: () => `Aqui ficam as <b>categorias</b>. Toque numa aba ou arraste pro lado para ver as outras.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-ordenar"), redondo: true,
+      texto: () => `Aqui você organiza os produtos por <b>menor</b> ou <b>maior preço</b>.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-busca").closest(".acao-cabecalho"),
+      texto: () => `Procurando algo? Toque na <b>lupa</b> e busque pelo nome, pelo código ou pelo código de barras.`,
+    },
+    {
+      alvo: () => document.querySelector("#lista-itens .item-card"),
+      texto: () => `Gostou de algum produto? Toque em <b>Tenho interesse</b> e depois ajuste a quantidade no <b>+</b> e no <b>−</b>. A <b>fração</b> está na descrição do produto. Toque na foto para ver maior.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-ir-carrinho"), botaoCarrinho: true,
+      texto: () => `Aqui você acompanha o que já escolheu, e fica tudo <b>guardado</b> mesmo se fechar a página. Quando terminar, toque aqui para ver seu <b>carrinho</b> e me enviar o pedido.`,
+    },
+  ];
+}
+
+// No Ofertas a foto do vendedor é um quadrinho com a foto de fundo (ou as
+// iniciais, quando ele não tem foto). Copia do cabeçalho pra fotinha do
+// balão e pra do carrinho.
+function copiarFotoVendedor(destino) {
+  const origem = document.getElementById("foto-vendedor");
+  destino.style.backgroundImage = origem.style.backgroundImage;
+  destino.textContent = origem.textContent;
+}
+
+function escaparHtml(texto) {
+  return String(texto).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---------- Dica de 1ª visita ----------
+function posicionarDicaFoto() {
+  const dica = document.getElementById("dica-foto");
+  const r = document.getElementById("vendedor-foto-wrap").getBoundingClientRect();
+  const left = Math.max(10, r.left - 4);
+  dica.style.left = left + "px";
+  dica.style.top = (r.bottom + 12) + "px";
+  dica.style.setProperty("--seta-x", (r.left + r.width / 2 - left) + "px");
+}
+
+function mostrarDicaFoto() {
+  // Não atrapalha se já tem outra coisa na frente (tour, pergunta, foto ampliada)
+  if (TOUR_ATIVO || PERGUNTA_ENVIO_ABERTA || document.getElementById("app").hidden) return;
+  if (!document.getElementById("modal-confirmacao").hidden || !document.getElementById("foto-zoom-fundo").hidden) return;
+  posicionarDicaFoto();
+  document.getElementById("dica-foto").classList.add("visivel");
+  document.getElementById("vendedor-foto-wrap").classList.add("pulsando");
+  DICA_FOTO_ABERTA = true;
+}
+
+function esconderDicaFoto() {
+  if (!DICA_FOTO_ABERTA) return;
+  DICA_FOTO_ABERTA = false;
+  document.getElementById("dica-foto").classList.remove("visivel");
+  document.getElementById("vendedor-foto-wrap").classList.remove("pulsando");
+  tourGravarStorage(CHAVE_DICA_FOTO, "1");
+}
+
+// ---------- Tour ----------
+// Mini tour da tela do carrinho (foto do vendedor ao lado do "Enviar").
+// Decisões do Leonardo em 14/11/2026: sem dica de 1ª visita aqui (o "?" na
+// foto basta). O passo do "Pedido mínimo" só aparece com item de parceiro;
+// o aviso de preço final não ganhou passo (já fica do lado do Enviar).
+function montarPassosTourCarrinho() {
+  return [
+    {
+      alvo: () => document.querySelector("#lista-carrinho .carrinho-item-linha .item-qty"),
+      texto: () => `Aqui você ajusta as <b>quantidades</b>. Se tirar tudo no <b>−</b>, o item sai do pedido.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-limpar-itens"),
+      texto: () => `Quer recomeçar? Aqui você <b>apaga tudo</b> de uma vez.`,
+    },
+    {
+      alvo: () => document.querySelector("#tela-carrinho .carrinho-loja"),
+      texto: () => `Tem mais de uma loja? Escreva aqui <b>para qual loja</b> é o pedido.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-pdf-pedido"),
+      texto: () => `Aqui você baixa seu pedido em <b>PDF</b>, se preferir.`,
+    },
+    {
+      // Só aparece se tiver item de parceiro (com pedido mínimo) no carrinho
+      alvo: () => document.querySelector("#lista-carrinho .grupo-carrinho-minimo"),
+      texto: () => `Os parceiros têm <b>pedido mínimo</b> próprio. Confira o valor de cada um.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-enviar-pedido"),
+      texto: () => `Tudo certo? Toque aqui e seu pedido chega direto no meu <b>WhatsApp</b>.`,
+    },
+  ];
+}
+
+function iniciarTour() {
+  esconderDicaFoto();
+  if (TOUR_ATIVO) return;
+  // Deixa a tela "limpa" antes de começar: sem busca, sem menu, lá no topo
+  if (BUSCA || !document.getElementById("barra-busca").hidden) fecharBusca();
+  document.getElementById("menu-ordenar").hidden = true;
+  window.scrollTo(0, 0);
+  abrirTour(montarPassosTour());
+}
+
+function iniciarTourCarrinho() {
+  if (TOUR_ATIVO) return;
+  window.scrollTo(0, 0);
+  abrirTour(montarPassosTourCarrinho());
+}
+
+function abrirTour(passos) {
+  // Pula passos cujo item não existe na tela (ex: coleção sem produto,
+  // carrinho vazio)
+  TOUR_PASSOS = passos.filter((p) => {
+    const alvo = p.alvo();
+    return Array.isArray(alvo) ? alvo.length > 0 : !!alvo;
+  });
+  if (TOUR_PASSOS.length === 0) return;
+
+  TOUR_ATIVO = true;
+  TOUR_PASSO = 0;
+  document.getElementById("tour-nome").textContent = primeiroNomeVendedor();
+  copiarFotoVendedor(document.getElementById("tour-mini-foto"));
+  document.getElementById("tour-bloqueio").hidden = false;
+  document.getElementById("tour-destaque").hidden = false;
+  document.getElementById("tour-balao").hidden = false;
+  mostrarPassoTour();
+}
+
+function encerrarTour() {
+  TOUR_ATIVO = false;
+  document.getElementById("tour-bloqueio").hidden = true;
+  document.getElementById("tour-destaque").hidden = true;
+  document.getElementById("tour-balao").hidden = true;
+  simularBotaoCarrinho(false);
+}
+
+// Nos passos do carrinho, com nada marcado, o botão aparece como
+// "Ir para o carrinho" em vez do cinza "Nenhum item selecionado" (decisão
+// do Leonardo). Ao sair do passo/tour, volta ao normal.
+function simularBotaoCarrinho(ligar) {
+  const btn = document.getElementById("btn-ir-carrinho");
+  if (ligar && btn.disabled) {
+    btn.classList.add("tour-simulado");
+    btn.textContent = "Ir para o carrinho";
+  } else if (!ligar && btn.classList.contains("tour-simulado")) {
+    btn.classList.remove("tour-simulado");
+    atualizarRodape();
+  }
+}
+
+function mostrarPassoTour() {
+  const passo = TOUR_PASSOS[TOUR_PASSO];
+  const ultimo = TOUR_PASSO === TOUR_PASSOS.length - 1;
+  simularBotaoCarrinho(!!passo.botaoCarrinho);
+  document.getElementById("tour-texto").innerHTML = passo.texto();
+  document.getElementById("tour-contador").textContent = `${TOUR_PASSO + 1} de ${TOUR_PASSOS.length}`;
+  document.getElementById("tour-proximo").textContent = ultimo ? "Entendi! 👍" : "Próximo →";
+  document.getElementById("tour-pular").style.visibility = ultimo ? "hidden" : "visible";
+  posicionarPassoTour();
+}
+
+function posicionarPassoTour() {
+  if (!TOUR_ATIVO) return;
+  const passo = TOUR_PASSOS[TOUR_PASSO];
+  const el = passo.alvo();
+  if (!el) return;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const pad = 6;
+  const destaque = document.getElementById("tour-destaque");
+
+  // Passo sem item pra apontar: tela escurecida e balão no meio
+  if (passo.centro) {
+    destaque.classList.add("sem-anel");
+    Object.assign(destaque.style, { left: vw / 2 + "px", top: vh / 2 + "px", width: "0px", height: "0px" });
+    const balaoC = document.getElementById("tour-balao");
+    const caixaC = document.getElementById("tour-caixa");
+    const larguraC = Math.min(360, vw - 24);
+    balaoC.style.width = larguraC + "px";
+    caixaC.classList.remove("seta-cima", "seta-baixo");
+    caixaC.classList.add("sem-seta");
+    balaoC.style.left = (vw - larguraC) / 2 + "px";
+    balaoC.style.top = Math.max(10, (vh - balaoC.offsetHeight) / 2) + "px";
+    return;
+  }
+  destaque.classList.remove("sem-anel");
+  document.getElementById("tour-caixa").classList.remove("sem-seta");
+
+  // O alvo pode ser um item só ou uma lista (ex: botões PDF + Imagem juntos)
+  let r;
+  if (Array.isArray(el)) {
+    const rs = el.map((e) => e.getBoundingClientRect());
+    const left = Math.min(...rs.map((x) => x.left));
+    const top = Math.min(...rs.map((x) => x.top));
+    const right = Math.max(...rs.map((x) => x.right));
+    const bottom = Math.max(...rs.map((x) => x.bottom));
+    r = { left, top, right, bottom, width: right - left, height: bottom - top };
+  } else {
+    r = el.getBoundingClientRect();
+  }
+
+  // Recorte iluminado em volta do item
+  let dl, dt, dw, dh;
+  if (passo.redondo) {
+    const lado = Math.max(r.width, r.height) + pad * 2;
+    dl = r.left + r.width / 2 - lado / 2;
+    dt = r.top + r.height / 2 - lado / 2;
+    dw = dh = lado;
+    destaque.style.borderRadius = "50%";
+  } else {
+    dl = r.left - pad;
+    dt = r.top - pad;
+    dw = r.width + pad * 2;
+    dh = r.height + pad * 2;
+    destaque.style.borderRadius = "14px";
+  }
+  Object.assign(destaque.style, { left: dl + "px", top: dt + "px", width: dw + "px", height: dh + "px" });
+
+  // Balão: embaixo do item se couber, senão em cima
+  const balao = document.getElementById("tour-balao");
+  const caixa = document.getElementById("tour-caixa");
+  const largura = Math.min(360, vw - 24);
+  const recuoCaixa = 46 + 8; // fotinha + espaço até o balão de fala
+  balao.style.width = largura + "px";
+  const altura = balao.offsetHeight;
+  const espacoAbaixo = vh - (dt + dh);
+  let top;
+  caixa.classList.remove("seta-cima", "seta-baixo");
+  if (espacoAbaixo > altura + 24) {
+    top = dt + dh + 14;
+    caixa.classList.add("seta-cima");
+  } else {
+    top = Math.max(10, dt - altura - 14);
+    caixa.classList.add("seta-baixo");
+  }
+  const centroX = dl + dw / 2;
+  const larguraCaixa = largura - recuoCaixa;
+  const left = Math.min(Math.max(12, centroX - recuoCaixa - larguraCaixa / 2), vw - largura - 12);
+  balao.style.left = left + "px";
+  balao.style.top = top + "px";
+  caixa.style.setProperty("--seta-x", Math.min(Math.max(18, centroX - left - recuoCaixa), larguraCaixa - 22) + "px");
+}
+
+// Liga tudo — chamado no fim do iniciar(), quando o catálogo já está na tela
+function iniciarTourGuiado() {
+  const ligarFoto = (el, acao) => {
+    el.addEventListener("click", acao);
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); acao(); }
+    });
+  };
+  ligarFotoComToqueEscondido(document.getElementById("vendedor-foto-wrap"));
+  ligarFoto(document.getElementById("carrinho-foto-wrap"), iniciarTourCarrinho);
+  ligarMenuVendedor();
+  // A foto do carrinho é a mesma do cabeçalho (já carregada a esta altura)
+  copiarFotoVendedor(document.getElementById("carrinho-foto"));
+  document.getElementById("tour-pular").addEventListener("click", encerrarTour);
+  document.getElementById("tour-proximo").addEventListener("click", () => {
+    if (TOUR_PASSO >= TOUR_PASSOS.length - 1) { encerrarTour(); return; }
+    TOUR_PASSO++;
+    mostrarPassoTour();
+  });
+  window.addEventListener("resize", () => {
+    posicionarPassoTour();
+    if (DICA_FOTO_ABERTA) posicionarDicaFoto();
+  });
+  // Qualquer toque na tela já some com a dica de 1ª visita
+  document.addEventListener("pointerdown", esconderDicaFoto, true);
+
+  if (!tourLerStorage(CHAVE_DICA_FOTO)) setTimeout(mostrarDicaFoto, 900);
+}
+
+
+// ============================================================
+// MENU DO VENDEDOR (toque escondido) + TUTORIAL DO VENDEDOR
+// ============================================================
+// Ideia do Leonardo (14/11/2026): o link é o mesmo pra cliente e vendedor,
+// então o "modo vendedor" abre por um toque escondido: SEGURAR a foto do
+// vendedor por 3 segundos (um anel dourado vai enchendo). Abre um menu com
+// "Copiar meu link" (o vendedor não perde mais o próprio link) e
+// "Tutorial do vendedor". Toque rápido na foto continua abrindo o tour do
+// cliente. Soltou antes dos 3s (depois de um toque longo)? Não acontece nada.
+const TEMPO_SEGURAR_MS = 3000;
+const TOQUE_RAPIDO_MS = 600;
+
+function ligarFotoComToqueEscondido(foto) {
+  let timer = null;
+  let inicio = 0;
+  let abriuMenu = false;
+  let xIni = 0;
+  let yIni = 0;
+
+  const cancelar = () => {
+    clearTimeout(timer);
+    timer = null;
+    foto.classList.remove("segurando");
+  };
+
+  foto.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    abriuMenu = false;
+    inicio = Date.now();
+    xIni = e.clientX;
+    yIni = e.clientY;
+    foto.classList.add("segurando");
+    timer = setTimeout(() => {
+      timer = null;
+      abriuMenu = true;
+      foto.classList.remove("segurando");
+      try { if (navigator.vibrate) navigator.vibrate(40); } catch (erro) { /* sem vibração */ }
+      abrirMenuVendedor();
+    }, TEMPO_SEGURAR_MS);
+  });
+
+  // Arrastou o dedo (rolando a tela)? Cancela.
+  foto.addEventListener("pointermove", (e) => {
+    if (timer && Math.hypot(e.clientX - xIni, e.clientY - yIni) > 12) cancelar();
+  });
+
+  foto.addEventListener("pointerup", () => {
+    const foiRapido = timer && Date.now() - inicio < TOQUE_RAPIDO_MS;
+    cancelar();
+    if (foiRapido && !abriuMenu) iniciarTour();
+  });
+  foto.addEventListener("pointercancel", cancelar);
+  foto.addEventListener("pointerleave", () => { if (timer) cancelar(); });
+
+  // Segurar a foto não pode abrir o menu do navegador ("Salvar imagem" etc)
+  foto.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  // Teclado: Enter/espaço abre o tour do cliente
+  foto.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); iniciarTour(); }
+  });
+}
+
+function posicionarMenuVendedor() {
+  const menu = document.getElementById("menu-vendedor");
+  const r = document.getElementById("vendedor-foto-wrap").getBoundingClientRect();
+  const largura = menu.offsetWidth || 230;
+  const left = Math.min(Math.max(10, r.left - 4), window.innerWidth - largura - 10);
+  menu.style.left = left + "px";
+  menu.style.top = (r.bottom + 14) + "px";
+  menu.style.setProperty("--seta-x", (r.left + r.width / 2 - left) + "px");
+}
+
+function abrirMenuVendedor() {
+  esconderDicaFoto();
+  if (TOUR_ATIVO) return;
+  window.scrollTo(0, 0);
+  document.getElementById("menu-vendedor-fundo").hidden = false;
+  document.getElementById("menu-vendedor").hidden = false;
+  posicionarMenuVendedor();
+}
+
+function fecharMenuVendedor() {
+  document.getElementById("menu-vendedor-fundo").hidden = true;
+  document.getElementById("menu-vendedor").hidden = true;
+}
+
+let TIMER_AVISO_VENDEDOR = null;
+function mostrarAvisoVendedor(texto, ms = 2600) {
+  const aviso = document.getElementById("aviso-vendedor");
+  aviso.textContent = texto;
+  aviso.classList.add("mostrar");
+  clearTimeout(TIMER_AVISO_VENDEDOR);
+  TIMER_AVISO_VENDEDOR = setTimeout(() => aviso.classList.remove("mostrar"), ms);
+}
+
+// O link copiado é o MESMO link que o cliente usa (o link normal do
+// vendedor, com o ?v= dele) — não existe link especial de vendedor.
+function linkDoVendedor() {
+  return window.location.href.split("#")[0];
+}
+
+async function copiarLinkDoVendedor() {
+  const link = linkDoVendedor();
+  let copiou = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(link);
+      copiou = true;
+    }
+  } catch (erro) { /* tenta o jeito antigo abaixo */ }
+  if (!copiou) {
+    try {
+      const campo = document.createElement("textarea");
+      campo.value = link;
+      campo.setAttribute("readonly", "");
+      campo.style.position = "fixed";
+      campo.style.opacity = "0";
+      document.body.appendChild(campo);
+      campo.select();
+      copiou = document.execCommand("copy");
+      campo.remove();
+    } catch (erro) { copiou = false; }
+  }
+  fecharMenuVendedor();
+  if (copiou) {
+    mostrarAvisoVendedor("Link copiado! Agora é só colar no WhatsApp.");
+  } else {
+    // Celular não deixou copiar sozinho: mostra o link pra copiar à mão
+    mostrarAvisoVendedor("Seu link: " + link, 8000);
+  }
+}
+
+function eIphone() {
+  const ua = navigator.userAgent || "";
+  return /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+}
+
+// Os 6 passos do tutorial do vendedor — mesmos textos nos 5 catálogos
+// (aprovados pelo Leonardo em 14/11/2026).
+function montarPassosTourVendedor() {
+  const salvarTela = eIphone()
+    ? `No <b>Safari</b>, toque em <b>Compartilhar</b> (o quadradinho com a setinha ↑) e escolha <b>Adicionar à Tela de Início</b>. Assim seu catálogo fica no celular, com o ícone dele, e você nunca perde seu link!`
+    : `No navegador, toque nos <b>3 pontinhos ⋮</b> lá em cima e escolha <b>Adicionar à tela inicial</b> (ou <b>Instalar app</b>). Assim seu catálogo fica no celular, com o ícone dele, e você nunca perde seu link!`;
+  return [
+    {
+      alvo: () => document.getElementById("vendedor-foto-wrap"), redondo: true,
+      texto: () => `Oi, <b>${escaparHtml(primeiroNomeVendedor())}</b>! Este é o seu <b>modo vendedor</b>, com dicas só pra você. Seus clientes não veem isso.`,
+    },
+    {
+      alvo: () => [document.getElementById("btn-gerar-pdf"), document.getElementById("btn-gerar-png")]
+        .map((b) => b && b.closest(".acao-cabecalho")).filter(Boolean),
+      texto: () => `Escolha os produtos que quer oferecer e toque em <b>PDF</b> ou <b>Imagem</b>. Sai pronto, com a sua foto e os preços, pra mandar aos clientes. A <b>Imagem</b> cabe até <b>16 produtos</b>; no <b>PDF</b> você coloca quantos quiser.`,
+    },
+    {
+      alvo: () => document.getElementById("btn-ir-carrinho"), botaoCarrinho: true,
+      texto: () => `Tem cliente que faz o pedido pelo <b>computador</b> e não tem o WhatsApp aberto ali? Oriente ele a usar o botão <b>PDF do pedido</b>, dentro do carrinho: ele baixa o pedido e te manda por onde for mais fácil.`,
+    },
+    {
+      alvo: () => document.getElementById("vendedor-foto-wrap"), redondo: true,
+      texto: () => `Sempre que precisar do seu link, <b>segure a sua foto</b> e toque em <b>Copiar meu link</b>. Aí é só colar no WhatsApp.`,
+    },
+    {
+      alvo: () => document.body, centro: true,
+      texto: () => salvarTela,
+    },
+    {
+      alvo: () => document.getElementById("vendedor-foto-wrap"), redondo: true,
+      texto: () => `Seus clientes aprendem a usar o catálogo <b>tocando na sua foto</b>. Avise eles!`,
+    },
+  ];
+}
+
+function iniciarTourVendedor() {
+  fecharMenuVendedor();
+  if (TOUR_ATIVO) return;
+  if (BUSCA || !document.getElementById("barra-busca").hidden) fecharBusca();
+  window.scrollTo(0, 0);
+  abrirTour(montarPassosTourVendedor());
+}
+
+function ligarMenuVendedor() {
+  document.getElementById("btn-copiar-link").addEventListener("click", copiarLinkDoVendedor);
+  document.getElementById("btn-tour-vendedor").addEventListener("click", iniciarTourVendedor);
+  document.getElementById("btn-fechar-menu-vendedor").addEventListener("click", fecharMenuVendedor);
+  document.getElementById("menu-vendedor-fundo").addEventListener("click", fecharMenuVendedor);
+  window.addEventListener("resize", () => {
+    if (!document.getElementById("menu-vendedor").hidden) posicionarMenuVendedor();
+  });
+}
+
+document.addEventListener("DOMContentLoaded", iniciar);
